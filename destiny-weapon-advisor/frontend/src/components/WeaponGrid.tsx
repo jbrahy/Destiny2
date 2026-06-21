@@ -25,6 +25,7 @@ export function WeaponGrid() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<WeaponDto | null>(null);
+  const [location, setLocation] = useState("All");
   const [filters, setFilters] = useState<FilterState>({
     verdict: "all", weaponType: "all", search: "",
   });
@@ -48,13 +49,19 @@ export function WeaponGrid() {
     [weapons],
   );
 
+  const tabs = useMemo(
+    () => ["All", ...characters.map((c) => c.className), "Vault"],
+    [characters],
+  );
+
   const shown = useMemo(() => {
     return weapons
+      .filter((w) => location === "All" || w.location === location)
       .filter((w) => filters.verdict === "all" || w.verdict === filters.verdict)
       .filter((w) => filters.weaponType === "all" || w.weaponType === filters.weaponType)
       .filter((w) => w.name.toLowerCase().includes(filters.search.toLowerCase()))
       .sort((a, b) => ORDER[a.verdict] - ORDER[b.verdict] || a.name.localeCompare(b.name));
-  }, [weapons, filters]);
+  }, [weapons, filters, location]);
 
   if (loading) return <div>Analyzing your inventory… (first run downloads the manifest)</div>;
   if (error) return <div style={{ color: "#c62828" }}>Error: {error}</div>;
@@ -68,6 +75,26 @@ export function WeaponGrid() {
         <span style={{ color: "#888", fontSize: 13 }}>
           {cachedAt ? `Last refreshed ${sinceText(cachedAt)}` : "Showing cached data"}
         </span>
+      </div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+        {tabs.map((t) => {
+          const ch = characters.find((c) => c.className === t);
+          const active = t === location;
+          return (
+            <button
+              key={t}
+              onClick={() => setLocation(t)}
+              style={{
+                padding: "6px 14px", borderRadius: 6, cursor: "pointer",
+                border: "1px solid #d0d7de",
+                background: active ? "#1b2838" : "#fff",
+                color: active ? "#fff" : "#333", fontWeight: active ? 700 : 400,
+              }}
+            >
+              {t}{ch ? ` ✦${ch.light}` : ""}
+            </button>
+          );
+        })}
       </div>
       <Filters state={filters} types={types} onChange={setFilters} />
       {selected && (
