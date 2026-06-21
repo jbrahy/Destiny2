@@ -89,7 +89,7 @@ The frontend serves on **http://localhost:5173**.
 | Reads inventory | Calls the Bungie API for your vault, character inventory, and equipped weapons |
 | Resolves names | Downloads and caches the Destiny 2 manifest to turn hash IDs into readable perk/weapon names |
 | Scores weapons | Compares each weapon's perk columns against the DIM voltron community wishlist |
-| Assigns a verdict | God Roll, Decent Roll, Keep, Junk, or Unknown (if no wishlist entry exists) |
+| Assigns a verdict | God Roll, Upgrade (god-roll perks but not yet masterworked), Good, Dismantle, or No Data (no wishlist entry) |
 | Shows the "why" | Each weapon detail panel lists the matched perks and the community note from the wishlist |
 
 Use the filter controls to narrow by verdict, weapon type, or damage element. The detail panel opens on click.
@@ -98,7 +98,7 @@ Use the filter controls to narrow by verdict, weapon type, or damage element. Th
 
 ## Troubleshooting
 
-- **Certificate warning on every launch** — the self-signed cert regenerates each run; accept it once per browser session.
+- **Certificate warning** — the backend generates the self-signed cert once (on first run) and reuses it; your browser shows the warning until you trust/accept it. Delete the `backend/.certs/` directory to force a fresh cert.
 - **Empty inventory** — confirm your Bungie app scopes include inventory access and that you approved them during OAuth.
 - **Manifest download hangs** — check your internet connection; the file is ~50–100 MB and is cached locally after the first download.
 - **`BUNGIE_CLIENT_SECRET` mismatch** — ensure the secret in `.env` matches the Bungie app page exactly (no extra whitespace).
