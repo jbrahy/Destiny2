@@ -73,3 +73,13 @@ def test_exotic_no_match_stays_no_data_not_dismantle():
     lists = wl(god={100: [WishlistRoll(100, frozenset({2, 3}), "")]})
     recs = {r.weapon.instance_id: r for r in score_inventory([a, b], lists)}
     assert recs["a"].verdict == Verdict.NO_DATA
+
+
+def test_full_god_match_overrides_trash_subset():
+    w = weapon([2, 3], mw=True)
+    lists = wl(
+        god={100: [WishlistRoll(100, frozenset({2, 3}), "godroll")]},
+        trash={100: [WishlistRoll(100, frozenset({2}), "trashy", is_trash=True)]},
+    )
+    rec = score_inventory([w], lists)[0]
+    assert rec.verdict == Verdict.GOD_ROLL

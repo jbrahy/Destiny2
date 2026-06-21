@@ -1,7 +1,9 @@
 from app.models import OwnedWeapon, Recommendation, Verdict, Wishlist, WishlistRoll
 
 
-def _best_god_match(weapon: OwnedWeapon, rolls: list[WishlistRoll]):
+def _best_god_match(
+    weapon: OwnedWeapon, rolls: list[WishlistRoll]
+) -> tuple[WishlistRoll | None, list[int], bool]:
     """Return (roll, matched_perks) for the strongest match, or (None, [])."""
     best_roll = None
     best_matched: list[int] = []
@@ -20,7 +22,7 @@ def _best_god_match(weapon: OwnedWeapon, rolls: list[WishlistRoll]):
     return best_roll, best_matched, best_full
 
 
-def _trash_match(weapon: OwnedWeapon, rolls: list[WishlistRoll]):
+def _trash_match(weapon: OwnedWeapon, rolls: list[WishlistRoll]) -> WishlistRoll | None:
     for roll in rolls:
         if roll.perks and roll.perks <= weapon.perks:
             return roll
@@ -36,12 +38,14 @@ def score_inventory(weapons: list[OwnedWeapon], wishlist: Wishlist) -> list[Reco
     base: list[Recommendation] = []
     for w in weapons:
         is_dupe = counts[w.item_hash] > 1
+        roll, matched, full = _best_god_match(w, wishlist.rolls_by_item.get(w.item_hash, []))
+        # Trash demotion never overrides a FULL god-roll match: a god roll that
+        # happens to contain a trash-flagged perk as a subset must not be dismantled.
         trash = _trash_match(w, wishlist.trash_by_item.get(w.item_hash, []))
-        if trash is not None:
+        if trash is not None and not full:
             base.append(Recommendation(w, Verdict.DISMANTLE, sorted(trash.perks),
                                        trash.notes, sorted(trash.tags), is_dupe))
             continue
-        roll, matched, full = _best_god_match(w, wishlist.rolls_by_item.get(w.item_hash, []))
         if roll is None:
             base.append(Recommendation(w, Verdict.NO_DATA, [], "", [], is_dupe))
         elif full:
