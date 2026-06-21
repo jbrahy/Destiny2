@@ -77,7 +77,12 @@ async def callback(code: str, state: str) -> RedirectResponse:
         tokens = await exchange_code(code, settings, client)
         access = tokens["access_token"]
         memberships = await get_memberships(access, settings, client)
-        primary = memberships["destinyMemberships"][0]
+        destiny_memberships = memberships["destinyMemberships"]
+        primary_id = memberships.get("primaryMembershipId")
+        primary = next(
+            (m for m in destiny_memberships if m.get("membershipId") == primary_id),
+            destiny_memberships[0],
+        )
     conn.execute("DELETE FROM tokens")
     conn.execute(
         "INSERT INTO tokens (id, access_token, refresh_token, expires_at, "
