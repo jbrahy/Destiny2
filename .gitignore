@@ -9,3 +9,6 @@ node_modules/
 .venv/
 dist/
 .remember/
+.certs/
+*.crt
+*.key
