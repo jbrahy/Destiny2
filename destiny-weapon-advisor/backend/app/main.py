@@ -1,10 +1,13 @@
 import json
+import os
 import secrets
 import time
 
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from app.bungie_client import (
     CLASS_TYPES, assemble_armor, assemble_weapons, equip_item, get_memberships,
@@ -19,7 +22,37 @@ from app.perk_scoring import score_by_perks
 from app.storage import get_conn, kv_get, kv_set
 
 app = FastAPI(title="Destiny 2 Weapon Advisor")
+
+# In-memory OAuth CSRF nonces. Process-local: a restart between /api/login and
+# /callback invalidates pending logins (acceptable for a local single-user tool).
 _states: set[str] = set()
+
+# Every cache key derived from a single account's profile. Cleared together on
+# account switch so no cross-account data can survive (keep this list complete).
+_ACCOUNT_CACHE_KEYS = (
+    "weapons_cache", "armor_cache", "profile_cache", "perk_desc_map", "profile_membership_id",
+)
+
+
+class TransferBody(BaseModel):
+    instanceId: str
+    itemHash: int
+    targetCharacterId: str
+    equip: bool = False
+
+
+class MembershipSelectBody(BaseModel):
+    membershipType: int
+    membershipId: str
+
+
+class PerkRatingBody(BaseModel):
+    name: str
+    weaponType: str = ""
+    rating: str
+    reason: str = ""
+    tags: list[str] = []
+    notes: str = ""
 
 
 def recommendation_to_dict(rec, manifest: Manifest) -> dict:
@@ -72,7 +105,7 @@ async def _pick_membership(memberships: dict, access: str, settings, client) -> 
     primary = next((m for m in destiny_memberships if m.get("membershipId") == primary_id), None)
     if primary is not None:
         return primary
-    best, best_date = destiny_memberships[0], ""
+    best, best_date, validated = destiny_memberships[0], "", False
     for m in destiny_memberships:
         try:
             prof = await get_profile(m["membershipType"], m["membershipId"], access, settings, client)
@@ -83,8 +116,10 @@ async def _pick_membership(memberships: dict, access: str, settings, client) -> 
             for c in prof.get("characters", {}).get("data", {}).values()
         ]
         latest = max(dates) if dates else ""
-        if latest > best_date:
-            best, best_date = m, latest
+        # First successfully-fetched account wins by default (don't let an
+        # unvalidated [0] beat a real account whose fetch succeeded).
+        if not validated or latest > best_date:
+            best, best_date, validated = m, latest, True
     return best
 
 
@@ -226,6 +261,7 @@ async def weapons(refresh: bool = False) -> dict:
         manifest = await load_manifest(client, conn)
         profile = await get_profile(mtype, mid, access, settings, client)
     kv_set(conn, "profile_cache", json.dumps(profile))
+    kv_set(conn, "profile_membership_id", mid)
     return _compute_weapons(conn, manifest, profile)
 
 
@@ -262,16 +298,10 @@ def get_perks() -> dict:
 
 
 @app.put("/api/perks")
-def put_perk(payload: dict) -> dict:
+def put_perk(body: PerkRatingBody) -> dict:
     conn = get_conn(get_settings().db_path)
     save_rating(
-        conn,
-        payload["name"],
-        payload.get("weaponType", ""),
-        payload["rating"],
-        payload.get("reason", ""),
-        payload.get("tags", []),
-        payload.get("notes", ""),
+        conn, body.name, body.weaponType, body.rating, body.reason, body.tags, body.notes
     )
     _recompute_from_cache(conn)
     return {"ok": True}
@@ -324,13 +354,13 @@ async def list_memberships() -> dict:
 
 
 @app.post("/api/memberships/select")
-def select_membership(payload: dict) -> dict:
+def select_membership(body: MembershipSelectBody) -> dict:
     conn = get_conn(get_settings().db_path)
     conn.execute(
         "UPDATE tokens SET membership_type = ?, membership_id = ? WHERE id = 1",
-        (payload["membershipType"], payload["membershipId"]),
+        (body.membershipType, body.membershipId),
     )
-    for key in ("weapons_cache", "armor_cache", "profile_cache", "perk_desc_map"):
+    for key in _ACCOUNT_CACHE_KEYS:
         conn.execute("DELETE FROM kv WHERE key = ?", (key,))
     conn.commit()
     return {"ok": True}
@@ -359,11 +389,11 @@ def get_characters() -> dict:
 
 
 @app.post("/api/transfer")
-async def transfer(payload: dict) -> dict:
-    instance_id = payload["instanceId"]
-    item_hash = payload["itemHash"]
-    target = payload["targetCharacterId"]
-    do_equip = payload.get("equip", False)
+async def transfer(body: TransferBody) -> dict:
+    instance_id = body.instanceId
+    item_hash = body.itemHash
+    target = body.targetCharacterId
+    do_equip = body.equip
     settings = get_settings()
     conn = get_conn(settings.db_path)
     profile_raw = kv_get(conn, "profile_cache")
@@ -383,6 +413,12 @@ async def transfer(payload: dict) -> dict:
         timeout=60.0, headers={"X-API-Key": settings.bungie_api_key}
     ) as client:
         access, mtype, mid = await _valid_access_token(settings, conn, client)
+        if kv_get(conn, "profile_membership_id") != mid:
+            raise HTTPException(
+                status_code=400,
+                detail="Your cached inventory is for a different account — open Weapons and "
+                "Refresh, then try the move again.",
+            )
         try:
             if source != target:
                 if source != "vault":
@@ -407,10 +443,20 @@ async def transfer(payload: dict) -> dict:
             )
         fresh = await get_profile(mtype, mid, access, settings, client)
     kv_set(conn, "profile_cache", json.dumps(fresh))
+    kv_set(conn, "profile_membership_id", mid)
     manifest = load_cached_manifest(conn)
     if manifest is not None:
         _compute_weapons(conn, manifest, fresh)
     return {"ok": True}
+
+
+# Serve the built frontend (production single-server mode). Declared after all
+# /api and /callback routes so those take priority; "/" falls through to the SPA.
+_FRONTEND_DIST = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
+)
+if os.path.isdir(_FRONTEND_DIST):
+    app.mount("/", StaticFiles(directory=_FRONTEND_DIST, html=True), name="frontend")
 
 
 def run() -> None:

@@ -1,4 +1,6 @@
-from app.main import recommendation_to_dict
+from fastapi.testclient import TestClient
+
+from app.main import app, recommendation_to_dict
 from app.manifest import Manifest
 from app.models import OwnedWeapon, Recommendation, Verdict
 
@@ -14,3 +16,21 @@ def test_recommendation_serialization_resolves_perk_names():
     assert out["matchedPerks"] == ["Explosive Payload"]
     assert out["note"] == "great pve"
     assert out["tags"] == ["pve"]
+
+
+def test_transfer_missing_fields_returns_422():
+    client = TestClient(app)
+    resp = client.post("/api/transfer", json={"instanceId": "x"})
+    assert resp.status_code == 422
+
+
+def test_perk_put_missing_rating_returns_422():
+    client = TestClient(app)
+    resp = client.put("/api/perks", json={"name": "Frenzy"})
+    assert resp.status_code == 422
+
+
+def test_membership_select_missing_fields_returns_422():
+    client = TestClient(app)
+    resp = client.post("/api/memberships/select", json={"membershipType": 2})
+    assert resp.status_code == 422

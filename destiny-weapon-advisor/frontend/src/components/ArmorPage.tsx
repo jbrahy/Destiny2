@@ -10,7 +10,8 @@ function objective(piece: ArmorPiece, stats: string[]): number {
   return stats.reduce((sum, s) => sum + (piece.stats[s] || 0), 0);
 }
 
-// Best piece per slot maximizing the objective, allowing at most one exotic overall.
+// Best piece per slot maximizing the objective, with at most one exotic where
+// possible (a slot with no legendary is forced to its best exotic).
 function optimize(pool: ArmorPiece[], stats: string[]) {
   const bySlot: Record<string, ArmorPiece[]> = {};
   for (const p of pool) (bySlot[p.slot] ||= []).push(p);

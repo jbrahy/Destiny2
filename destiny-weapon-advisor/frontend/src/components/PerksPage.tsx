@@ -81,8 +81,8 @@ export function PerksPage() {
       <h1 style={{ marginTop: 0 }}>Perk Ratings</h1>
       <p style={{ color: "#666", maxWidth: 720 }}>
         Rate each perk <strong>per weapon type</strong> and add your own notes. Seeded from general
-        PvE/PvP knowledge — edit freely; weapon verdicts update on your next{" "}
-        <strong>Refresh</strong>. <em>Verify against the current season.</em>
+        PvE/PvP knowledge — edit freely; your weapon verdicts update automatically, so switch to the{" "}
+        <strong>Weapons</strong> tab to see them. <em>Verify against the current season.</em>
       </p>
       <input
         placeholder="Search perks…"
