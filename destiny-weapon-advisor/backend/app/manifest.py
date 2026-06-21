@@ -7,7 +7,6 @@ import httpx
 from app.storage import kv_get, kv_set
 
 _BASE = "https://www.bungie.net"
-_API_KEY_HEADER = "X-API-Key"
 
 
 @dataclass
@@ -32,6 +31,8 @@ class Manifest:
 
 
 async def load_manifest(client: httpx.AsyncClient, conn: sqlite3.Connection) -> Manifest:
+    """Load the manifest. The passed httpx client MUST be constructed with an
+    'X-API-Key' default header — the Bungie /Platform manifest endpoint requires it."""
     meta = await client.get(f"{_BASE}/Platform/Destiny2/Manifest/")
     meta.raise_for_status()
     data = meta.json()["Response"]
