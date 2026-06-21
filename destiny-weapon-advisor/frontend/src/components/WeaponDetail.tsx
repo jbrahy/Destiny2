@@ -3,14 +3,20 @@ import { moveItem } from "../api";
 import { Character, WeaponDto } from "../types";
 
 function StatBar({ name, value }: { name: string; value: number }) {
-  const pct = Math.max(0, Math.min(100, value));
+  // Only the 0–100 stats (Range, Stability, Handling…) get a meaningful bar.
+  // Absolute stats (RPM, Magazine, Charge Time…) just show the number.
+  const showBar = value >= 0 && value <= 100;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
       <span style={{ width: 130, fontSize: 12, color: "#555" }}>{name}</span>
-      <div style={{ flex: 1, background: "#eee", borderRadius: 3, height: 10 }}>
-        <div style={{ width: `${pct}%`, background: "#1565c0", height: 10, borderRadius: 3 }} />
-      </div>
-      <span style={{ width: 32, textAlign: "right", fontSize: 12 }}>{value}</span>
+      {showBar ? (
+        <div style={{ flex: 1, background: "#eee", borderRadius: 3, height: 10 }}>
+          <div style={{ width: `${value}%`, background: "#1565c0", height: 10, borderRadius: 3 }} />
+        </div>
+      ) : (
+        <div style={{ flex: 1 }} />
+      )}
+      <span style={{ width: 40, textAlign: "right", fontSize: 12 }}>{value}</span>
     </div>
   );
 }
