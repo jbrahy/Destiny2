@@ -64,6 +64,30 @@ def login() -> RedirectResponse:
     return RedirectResponse(url, status_code=307)
 
 
+async def _pick_membership(memberships: dict, access: str, settings, client) -> dict:
+    """Choose which Destiny account to use: the cross-save primary if set,
+    otherwise the account whose most-recently-played character is the newest."""
+    destiny_memberships = memberships["destinyMemberships"]
+    primary_id = memberships.get("primaryMembershipId")
+    primary = next((m for m in destiny_memberships if m.get("membershipId") == primary_id), None)
+    if primary is not None:
+        return primary
+    best, best_date = destiny_memberships[0], ""
+    for m in destiny_memberships:
+        try:
+            prof = await get_profile(m["membershipType"], m["membershipId"], access, settings, client)
+        except Exception:
+            continue
+        dates = [
+            c.get("dateLastPlayed", "")
+            for c in prof.get("characters", {}).get("data", {}).values()
+        ]
+        latest = max(dates) if dates else ""
+        if latest > best_date:
+            best, best_date = m, latest
+    return best
+
+
 @app.get("/callback")
 async def callback(code: str, state: str) -> RedirectResponse:
     if state not in _states:
@@ -77,12 +101,7 @@ async def callback(code: str, state: str) -> RedirectResponse:
         tokens = await exchange_code(code, settings, client)
         access = tokens["access_token"]
         memberships = await get_memberships(access, settings, client)
-        destiny_memberships = memberships["destinyMemberships"]
-        primary_id = memberships.get("primaryMembershipId")
-        primary = next(
-            (m for m in destiny_memberships if m.get("membershipId") == primary_id),
-            destiny_memberships[0],
-        )
+        primary = await _pick_membership(memberships, access, settings, client)
     conn.execute("DELETE FROM tokens")
     conn.execute(
         "INSERT INTO tokens (id, access_token, refresh_token, expires_at, "
@@ -284,6 +303,37 @@ def _find_item_location(profile: dict, instance_id: str) -> str | None:
         if it.get("itemInstanceId") == instance_id:
             return "vault"
     return None
+
+
+@app.get("/api/memberships")
+async def list_memberships() -> dict:
+    settings = get_settings()
+    conn = get_conn(settings.db_path)
+    row = conn.execute("SELECT membership_type, membership_id FROM tokens WHERE id = 1").fetchone()
+    active = {"type": row[0], "id": row[1]} if row else None
+    async with httpx.AsyncClient(
+        timeout=30.0, headers={"X-API-Key": settings.bungie_api_key}
+    ) as client:
+        access, _mt, _mid = await _valid_access_token(settings, conn, client)
+        memberships = await get_memberships(access, settings, client)
+    out = [
+        {"type": m["membershipType"], "id": m["membershipId"], "displayName": m.get("displayName", "")}
+        for m in memberships["destinyMemberships"]
+    ]
+    return {"memberships": out, "active": active}
+
+
+@app.post("/api/memberships/select")
+def select_membership(payload: dict) -> dict:
+    conn = get_conn(get_settings().db_path)
+    conn.execute(
+        "UPDATE tokens SET membership_type = ?, membership_id = ? WHERE id = 1",
+        (payload["membershipType"], payload["membershipId"]),
+    )
+    for key in ("weapons_cache", "armor_cache", "profile_cache", "perk_desc_map"):
+        conn.execute("DELETE FROM kv WHERE key = ?", (key,))
+    conn.commit()
+    return {"ok": True}
 
 
 @app.get("/api/characters")

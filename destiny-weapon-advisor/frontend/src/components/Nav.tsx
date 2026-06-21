@@ -1,3 +1,5 @@
+import { AccountSwitcher } from "./AccountSwitcher";
+
 export type Section = "weapons" | "perks" | "armor" | "builds";
 
 export const SECTIONS: { id: Section; label: string }[] = [
@@ -35,10 +37,11 @@ export function Nav({ current, onChange }: { current: Section; onChange: (s: Sec
           );
         })}
       </nav>
+      <AccountSwitcher />
       <a
         href="/api/login"
         title="Re-authorize with Bungie (needed to enable moving/equipping items)"
-        style={{ marginLeft: "auto", color: "#cbd5e1", fontSize: 13 }}
+        style={{ marginLeft: 12, color: "#cbd5e1", fontSize: 13 }}
       >
         Re-login
       </a>

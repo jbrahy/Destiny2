@@ -1,4 +1,4 @@
-import { ArmorPiece, Character, WeaponDto, WeaponTypePerks } from "./types";
+import { ArmorPiece, Character, Membership, WeaponDto, WeaponTypePerks } from "./types";
 
 export const loginUrl = "/api/login";
 
@@ -34,6 +34,24 @@ export async function savePerkRating(body: {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Failed to save rating (${res.status})`);
+}
+
+export async function fetchMemberships(): Promise<{
+  memberships: Membership[];
+  active: { type: number; id: string } | null;
+}> {
+  const res = await fetch("/api/memberships");
+  if (!res.ok) throw new Error(`Failed to load accounts (${res.status})`);
+  return res.json();
+}
+
+export async function selectMembership(membershipType: number, membershipId: string): Promise<void> {
+  const res = await fetch("/api/memberships/select", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ membershipType, membershipId }),
+  });
+  if (!res.ok) throw new Error(`Failed to switch account (${res.status})`);
 }
 
 export async function fetchArmor(): Promise<{ armor: ArmorPiece[]; statNames: string[] }> {

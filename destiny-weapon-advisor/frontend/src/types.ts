@@ -12,6 +12,12 @@ export interface ArmorPiece {
   location: string;
 }
 
+export interface Membership {
+  type: number;
+  id: string;
+  displayName: string;
+}
+
 export interface Character {
   id: string;
   className: string;
