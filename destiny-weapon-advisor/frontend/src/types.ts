@@ -12,4 +12,9 @@ export interface WeaponDto {
   note: string;
   tags: string[];
   isDuplicate: boolean;
+  power: number;
+  ammoType: string;
+  frame: string;
+  perkNames: string[];
+  stats: Record<string, number>;
 }

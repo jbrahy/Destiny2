@@ -30,6 +30,11 @@ def recommendation_to_dict(rec, manifest: Manifest) -> dict:
         "note": rec.note,
         "tags": rec.tags,
         "isDuplicate": rec.is_duplicate,
+        "power": rec.weapon.power,
+        "ammoType": rec.weapon.ammo_type,
+        "frame": rec.weapon.frame,
+        "perkNames": rec.weapon.perk_names,
+        "stats": rec.weapon.stats,
     }
 
 

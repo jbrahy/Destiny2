@@ -36,6 +36,11 @@ class OwnedWeapon:
     is_random_roll: bool
     perks: frozenset[int]
     location: str
+    power: int = 0
+    ammo_type: str = ""
+    frame: str = ""
+    perk_names: list[str] = field(default_factory=list)
+    stats: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass

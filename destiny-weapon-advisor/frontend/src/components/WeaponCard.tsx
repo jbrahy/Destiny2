@@ -10,6 +10,7 @@ const BADGE: Record<Verdict, { label: string; color: string }> = {
 
 export function WeaponCard({ w, onClick }: { w: WeaponDto; onClick: () => void }) {
   const badge = BADGE[w.verdict];
+  const meta = [w.weaponType, w.element, w.ammoType, w.location].filter(Boolean).join(" · ");
   return (
     <div
       onClick={onClick}
@@ -18,13 +19,18 @@ export function WeaponCard({ w, onClick }: { w: WeaponDto; onClick: () => void }
         borderLeft: `6px solid ${badge.color}`,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
         <strong>{w.name}</strong>
-        <span style={{ color: badge.color, fontWeight: 600 }}>{badge.label}</span>
+        <span style={{ color: badge.color, fontWeight: 600, whiteSpace: "nowrap" }}>
+          {badge.label}
+        </span>
       </div>
       <div style={{ fontSize: 12, color: "#666" }}>
-        {w.weaponType} · {w.element} · {w.location}
-        {w.isMasterworked ? " · ★" : ""}
+        {meta}{w.isMasterworked ? " · ★" : ""}
+      </div>
+      <div style={{ fontSize: 12, color: "#333", marginTop: 2 }}>
+        {w.power > 0 && <span style={{ fontWeight: 600 }}>✦ {w.power}</span>}
+        {w.frame && <span> · {w.frame}</span>}
       </div>
     </div>
   );

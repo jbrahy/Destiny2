@@ -17,9 +17,17 @@ def extract_response(payload: dict) -> dict:
 
 _BASE = "https://www.bungie.net/Platform"
 _MASTERWORK_STATE = 4
-PROFILE_COMPONENTS = "102,201,205,300,302,305,310"
+PROFILE_COMPONENTS = "102,200,201,205,300,302,304,305,310"
 
 DAMAGE_TYPES = {1: "Kinetic", 2: "Arc", 3: "Solar", 4: "Void", 6: "Stasis", 7: "Strand"}
+CLASS_TYPES = {0: "Titan", 1: "Hunter", 2: "Warlock"}
+
+# Plug item-types that are NOT weapon perks (excluded from the displayed roll;
+# the Intrinsic is shown separately as the frame).
+_NON_PERK_TYPES = {
+    "", "Intrinsic", "Shader", "Weapon Ornament", "Tracker", "Weapon Mod",
+    "Masterwork", "Enhancement", "Memento", "Restore Defaults", "Catalyst",
+}
 
 
 def _headers(settings: Settings, access_token: str | None = None) -> dict:
@@ -30,8 +38,14 @@ def _headers(settings: Settings, access_token: str | None = None) -> dict:
 
 
 def assemble_weapons(profile: dict, manifest: Manifest) -> list[OwnedWeapon]:
-    instances = profile.get("itemComponents", {}).get("instances", {}).get("data", {})
-    sockets = profile.get("itemComponents", {}).get("sockets", {}).get("data", {})
+    components = profile.get("itemComponents", {})
+    instances = components.get("instances", {}).get("data", {})
+    sockets = components.get("sockets", {}).get("data", {})
+    item_stats = components.get("stats", {}).get("data", {})
+    characters = profile.get("characters", {}).get("data", {})
+    char_class = {
+        cid: CLASS_TYPES.get(c.get("classType"), "Character") for cid, c in characters.items()
+    }
 
     raw: list[tuple[dict, str]] = []
     pi = profile.get("profileInventory", {}).get("data", {}).get("items", [])
@@ -42,27 +56,46 @@ def assemble_weapons(profile: dict, manifest: Manifest) -> list[OwnedWeapon]:
         raw += [(item, char_id) for item in bucket.get("items", [])]
 
     weapons: list[OwnedWeapon] = []
-    for item, location in raw:
+    for item, holder in raw:
         instance_id = item.get("itemInstanceId")
         item_hash = item.get("itemHash")
         if not instance_id or not manifest.is_weapon(item_hash):
             continue
         socket_list = sockets.get(instance_id, {}).get("sockets", [])
-        perks = frozenset(
-            s["plugHash"] for s in socket_list if s.get("plugHash") is not None
+        plug_hashes = [s["plugHash"] for s in socket_list if s.get("plugHash") is not None]
+        frame = next(
+            (manifest.name(h) for h in plug_hashes if manifest.item_type(h) == "Intrinsic"), ""
         )
-        damage = instances.get(instance_id, {}).get("damageType", 0)
+        perk_names = [
+            manifest.name(h)
+            for h in plug_hashes
+            if manifest.item_type(h) not in _NON_PERK_TYPES
+            and not manifest.name(h).startswith("Unknown (")
+        ]
+        inst = instances.get(instance_id, {})
+        raw_stats = item_stats.get(instance_id, {}).get("stats", {})
+        stats = {}
+        for stat_hash, entry in raw_stats.items():
+            stat_name = manifest.stat_name(int(stat_hash))
+            if stat_name:
+                stats[stat_name] = entry.get("value", 0)
+        location = "Vault" if holder == "Vault" else char_class.get(holder, "Character")
         weapons.append(
             OwnedWeapon(
                 instance_id=instance_id,
                 item_hash=item_hash,
                 name=manifest.name(item_hash),
                 weapon_type=manifest.item_type(item_hash),
-                element=DAMAGE_TYPES.get(damage, "Unknown"),
+                element=DAMAGE_TYPES.get(inst.get("damageType", 0), "Unknown"),
                 is_masterworked=bool(item.get("state", 0) & _MASTERWORK_STATE),
                 is_random_roll=manifest.tier_type(item_hash) == 5,
-                perks=perks,
+                perks=frozenset(plug_hashes),
                 location=location,
+                power=inst.get("primaryStat", {}).get("value", 0),
+                ammo_type=manifest.ammo_type(item_hash),
+                frame=frame,
+                perk_names=perk_names,
+                stats=stats,
             )
         )
     return weapons

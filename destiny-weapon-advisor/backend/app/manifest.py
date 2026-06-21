@@ -7,11 +7,13 @@ import httpx
 from app.storage import kv_get, kv_set
 
 _BASE = "https://www.bungie.net"
+_AMMO_TYPES = {1: "Primary", 2: "Special", 3: "Heavy"}
 
 
 @dataclass
 class Manifest:
     items: dict[int, dict] = field(default_factory=dict)
+    stats: dict[int, dict] = field(default_factory=dict)
 
     def _def(self, item_hash: int) -> dict:
         return self.items.get(item_hash, {})
@@ -29,6 +31,14 @@ class Manifest:
     def is_weapon(self, item_hash: int) -> bool:
         return self._def(item_hash).get("itemType") == 3
 
+    def ammo_type(self, item_hash: int) -> str:
+        ammo = self._def(item_hash).get("equippingBlock", {}).get("ammoType", 0)
+        return _AMMO_TYPES.get(ammo, "")
+
+    def stat_name(self, stat_hash: int) -> str:
+        dp = self.stats.get(stat_hash, {}).get("displayProperties", {})
+        return dp.get("name", "")
+
 
 async def load_manifest(client: httpx.AsyncClient, conn: sqlite3.Connection) -> Manifest:
     """Load the manifest. The passed httpx client MUST be constructed with an
@@ -41,13 +51,24 @@ async def load_manifest(client: httpx.AsyncClient, conn: sqlite3.Connection) -> 
 
     if cached_version == version:
         raw = kv_get(conn, "manifest_items")
-        if raw:
-            return Manifest(items={int(k): v for k, v in json.loads(raw).items()})
+        raw_stats = kv_get(conn, "manifest_stats")
+        if raw and raw_stats:
+            return Manifest(
+                items={int(k): v for k, v in json.loads(raw).items()},
+                stats={int(k): v for k, v in json.loads(raw_stats).items()},
+            )
 
-    path = data["jsonWorldComponentContentPaths"]["en"]["DestinyInventoryItemDefinition"]
-    defs = await client.get(f"{_BASE}{path}", timeout=120.0)
+    paths = data["jsonWorldComponentContentPaths"]["en"]
+    defs = await client.get(f"{_BASE}{paths['DestinyInventoryItemDefinition']}", timeout=120.0)
     defs.raise_for_status()
     items = defs.json()
+    stat_defs = await client.get(f"{_BASE}{paths['DestinyStatDefinition']}", timeout=120.0)
+    stat_defs.raise_for_status()
+    stats = stat_defs.json()
     kv_set(conn, "manifest_items", json.dumps(items))
+    kv_set(conn, "manifest_stats", json.dumps(stats))
     kv_set(conn, "manifest_version", version)
-    return Manifest(items={int(k): v for k, v in items.items()})
+    return Manifest(
+        items={int(k): v for k, v in items.items()},
+        stats={int(k): v for k, v in stats.items()},
+    )
