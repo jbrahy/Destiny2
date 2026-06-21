@@ -1,0 +1,5 @@
+{
+  "100": {"displayProperties": {"name": "Fatebringer"}, "itemType": 3, "itemTypeDisplayName": "Hand Cannon", "inventory": {"tierType": 5}, "defaultDamageType": 3},
+  "2": {"displayProperties": {"name": "Explosive Payload"}, "itemType": 19, "itemTypeDisplayName": "Trait", "inventory": {"tierType": 2}},
+  "999": {"displayProperties": {"name": "Hawkmoon"}, "itemType": 3, "itemTypeDisplayName": "Hand Cannon", "inventory": {"tierType": 6}, "defaultDamageType": 1}
+}

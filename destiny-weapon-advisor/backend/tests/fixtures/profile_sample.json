@@ -1,0 +1,19 @@
+{
+  "profileInventory": {"data": {"items": [
+    {"itemHash": 100, "itemInstanceId": "i1", "state": 4},
+    {"itemHash": 100, "itemInstanceId": "i2", "state": 0},
+    {"itemHash": 999, "itemInstanceId": "i3", "state": 0}
+  ]}},
+  "characterInventories": {"data": {}},
+  "characterEquipment": {"data": {}},
+  "itemComponents": {
+    "instances": {"data": {
+      "i1": {"damageType": 3}, "i2": {"damageType": 3}, "i3": {"damageType": 1}
+    }},
+    "sockets": {"data": {
+      "i1": {"sockets": [{"plugHash": 2}, {"plugHash": 3}, {"plugHash": 50}]},
+      "i2": {"sockets": [{"plugHash": 8}, {"plugHash": 9}]},
+      "i3": {"sockets": [{"plugHash": 2}, {"plugHash": 3}]}
+    }}
+  }
+}
