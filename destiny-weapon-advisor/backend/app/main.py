@@ -81,7 +81,7 @@ async def callback(code: str, state: str) -> RedirectResponse:
         ),
     )
     conn.commit()
-    return RedirectResponse("/", status_code=307)
+    return RedirectResponse(settings.frontend_url, status_code=307)
 
 
 async def _valid_access_token(settings, conn, client) -> tuple[str, int, str]:
