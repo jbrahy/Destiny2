@@ -23,15 +23,34 @@ export function PerksPage() {
       prev.map((g) =>
         g.weaponType !== weaponType
           ? g
-          : { ...g, perks: g.perks.map((p) => (p.name === name ? { ...p, ...changes } : p)) },
+          : {
+              ...g,
+              perks: g.perks.map((p) =>
+                p.name === name ? { ...p, ...changes, dirty: true } : p,
+              ),
+            },
       ),
     );
   }
 
-  async function save(weaponType: string, perk: CatalogPerk, rating: string, reason: string) {
-    patch(weaponType, perk.name, { rating, reason, isOverride: true });
+  async function save(weaponType: string, perk: CatalogPerk) {
     try {
-      await savePerkRating({ name: perk.name, weaponType, rating, reason, tags: perk.tags });
+      await savePerkRating({
+        name: perk.name, weaponType, rating: perk.rating,
+        reason: perk.reason, tags: perk.tags, notes: perk.notes,
+      });
+      setGroups((prev) =>
+        prev.map((g) =>
+          g.weaponType !== weaponType
+            ? g
+            : {
+                ...g,
+                perks: g.perks.map((p) =>
+                  p.name === perk.name ? { ...p, dirty: false, isOverride: true } : p,
+                ),
+              },
+        ),
+      );
     } catch (e) {
       setError(String(e));
     }
@@ -61,9 +80,9 @@ export function PerksPage() {
     <div>
       <h1 style={{ marginTop: 0 }}>Perk Ratings</h1>
       <p style={{ color: "#666", maxWidth: 720 }}>
-        Rate each perk <strong>per weapon type</strong>. Ratings are seeded from general PvE/PvP
-        knowledge — edit freely; your weapon verdicts update on the next <strong>Refresh</strong> in
-        the Weapons tab. <em>Verify against the current season.</em>
+        Rate each perk <strong>per weapon type</strong> and add your own notes. Seeded from general
+        PvE/PvP knowledge — edit freely; weapon verdicts update on your next{" "}
+        <strong>Refresh</strong>. <em>Verify against the current season.</em>
       </p>
       <input
         placeholder="Search perks…"
@@ -86,37 +105,51 @@ export function PerksPage() {
               <span style={{ color: "#999", fontWeight: 400 }}>({g.perks.length})</span>
             </div>
             {isOpen && (
-              <div style={{ padding: "6px 14px" }}>
+              <div style={{ padding: "8px 14px" }}>
                 {g.perks.map((p) => (
                   <div
                     key={p.name}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 10,
-                      padding: "5px 0", borderBottom: "1px solid #f1f1f1",
-                    }}
+                    style={{ padding: "10px 0", borderBottom: "1px solid #f1f1f1" }}
                   >
-                    <select
-                      value={p.rating}
-                      onChange={(e) => save(g.weaponType, p, e.target.value, p.reason)}
-                      style={{ width: 52, fontWeight: 700, color: TIER_COLOR[p.rating] || "#333" }}
-                    >
-                      {TIERS.map((t) => (
-                        <option key={t} value={t}>{t || "—"}</option>
-                      ))}
-                    </select>
-                    <span style={{ width: 210, fontWeight: 500 }}>{p.name}</span>
-                    <input
-                      value={p.reason}
-                      placeholder="reason…"
-                      onChange={(e) => patch(g.weaponType, p.name, { reason: e.target.value })}
-                      onBlur={(e) => save(g.weaponType, p, p.rating, e.target.value)}
-                      style={{ flex: 1, padding: 4 }}
-                    />
-                    {p.isOverride && (
-                      <span title="weapon-type override" style={{ fontSize: 11, color: "#1565c0" }}>
-                        ★ override
-                      </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <select
+                        value={p.rating}
+                        onChange={(e) => patch(g.weaponType, p.name, { rating: e.target.value })}
+                        style={{ width: 52, fontWeight: 700, color: TIER_COLOR[p.rating] || "#333" }}
+                      >
+                        {TIERS.map((t) => (
+                          <option key={t} value={t}>{t || "—"}</option>
+                        ))}
+                      </select>
+                      <strong style={{ minWidth: 200 }}>{p.name}</strong>
+                      {p.isOverride && (
+                        <span title="weapon-type override" style={{ fontSize: 11, color: "#1565c0" }}>
+                          ★ override
+                        </span>
+                      )}
+                      <button
+                        onClick={() => save(g.weaponType, p)}
+                        disabled={!p.dirty}
+                        style={{ marginLeft: "auto", padding: "4px 14px" }}
+                      >
+                        {p.dirty ? "Save" : "Saved"}
+                      </button>
+                    </div>
+                    {p.description && (
+                      <p style={{ margin: "4px 0 2px", fontSize: 13, color: "#444" }}>{p.description}</p>
                     )}
+                    {p.reason && (
+                      <p style={{ margin: "2px 0", fontSize: 12, color: "#888" }}>
+                        <em>Why this tier:</em> {p.reason}
+                      </p>
+                    )}
+                    <textarea
+                      value={p.notes}
+                      placeholder="Your notes…"
+                      onChange={(e) => patch(g.weaponType, p.name, { notes: e.target.value })}
+                      rows={2}
+                      style={{ width: "100%", marginTop: 4, padding: 6, boxSizing: "border-box" }}
+                    />
                   </div>
                 ))}
               </div>

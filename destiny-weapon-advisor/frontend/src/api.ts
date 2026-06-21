@@ -26,7 +26,7 @@ export async function fetchPerks(): Promise<WeaponTypePerks[]> {
 }
 
 export async function savePerkRating(body: {
-  name: string; weaponType: string; rating: string; reason: string; tags: string[];
+  name: string; weaponType: string; rating: string; reason: string; tags: string[]; notes: string;
 }): Promise<void> {
   const res = await fetch("/api/perks", {
     method: "PUT",

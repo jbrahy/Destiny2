@@ -40,8 +40,11 @@ export interface CatalogPerk {
   name: string;
   rating: string;
   reason: string;
+  notes: string;
+  description: string;
   tags: string[];
   isOverride: boolean;
+  dirty?: boolean;
 }
 
 export interface WeaponTypePerks {

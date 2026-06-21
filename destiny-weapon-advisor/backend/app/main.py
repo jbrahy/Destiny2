@@ -142,6 +142,14 @@ def weapon_to_dict(weapon, info: dict) -> dict:
 
 def _compute_weapons(conn, manifest: Manifest, profile: dict) -> dict:
     owned = assemble_weapons(profile, manifest)
+    desc_map: dict[str, str] = {}
+    for w in owned:
+        for plug_hash in w.perks:
+            name = manifest.name(plug_hash)
+            description = manifest.description(plug_hash)
+            if name and description and not name.startswith("Unknown ("):
+                desc_map[name] = description
+    kv_set(conn, "perk_desc_map", json.dumps(desc_map))
     ratings = load_ratings(conn)
     scored = score_by_perks(owned, ratings)
     result = {
@@ -184,6 +192,8 @@ async def weapons(refresh: bool = False) -> dict:
 def get_perks() -> dict:
     conn = get_conn(get_settings().db_path)
     ratings = load_ratings(conn)
+    desc_raw = kv_get(conn, "perk_desc_map")
+    descriptions = json.loads(desc_raw) if desc_raw else {}
     cached = kv_get(conn, "weapons_cache")
     by_type: dict[str, set] = {}
     if cached:
@@ -200,6 +210,8 @@ def get_perks() -> dict:
                 "name": name,
                 "rating": info["rating"] if info else "",
                 "reason": info.get("reason", "") if info else "",
+                "notes": ratings.notes(name, wtype),
+                "description": descriptions.get(name, ""),
                 "tags": info.get("tags", []) if info else [],
                 "isOverride": ratings.is_override(name, wtype),
             })
@@ -218,6 +230,7 @@ def put_perk(payload: dict) -> dict:
         payload["rating"],
         payload.get("reason", ""),
         payload.get("tags", []),
+        payload.get("notes", ""),
     )
     _recompute_from_cache(conn)
     return {"ok": True}
