@@ -4,6 +4,17 @@ from app.config import Settings
 from app.manifest import Manifest
 from app.models import OwnedWeapon
 
+
+class BungieApiError(Exception):
+    """Raised when the Bungie API returns a non-success ErrorCode."""
+
+
+def extract_response(payload: dict) -> dict:
+    """Return the Response envelope, or raise if Bungie signaled an error."""
+    if payload.get("ErrorCode") != 1:
+        raise BungieApiError(payload.get("Message") or "Bungie API error")
+    return payload["Response"]
+
 _BASE = "https://www.bungie.net/Platform"
 _MASTERWORK_STATE = 4
 PROFILE_COMPONENTS = "102,201,205,300,302,305,310"
@@ -63,7 +74,7 @@ async def get_memberships(access_token: str, settings: Settings, client: httpx.A
         headers=_headers(settings, access_token),
     )
     resp.raise_for_status()
-    return resp.json()["Response"]
+    return extract_response(resp.json())
 
 
 async def get_profile(
@@ -79,4 +90,4 @@ async def get_profile(
         headers=_headers(settings, access_token),
     )
     resp.raise_for_status()
-    return resp.json()["Response"]
+    return extract_response(resp.json())

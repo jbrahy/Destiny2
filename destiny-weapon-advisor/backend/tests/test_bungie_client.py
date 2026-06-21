@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
 
-from app.bungie_client import assemble_weapons
+import pytest
+
+from app.bungie_client import BungieApiError, assemble_weapons, extract_response
 from app.manifest import Manifest
 
 PROFILE = json.loads((Path(__file__).parent / "fixtures" / "profile_sample.json").read_text())
@@ -39,3 +41,12 @@ def test_element_mapped_from_damage_type():
     weapons = {w.instance_id: w for w in assemble_weapons(PROFILE, MANIFEST)}
     assert weapons["i1"].element == "Solar"
     assert weapons["i3"].element == "Kinetic"
+
+
+def test_extract_response_returns_payload_on_success():
+    assert extract_response({"ErrorCode": 1, "Response": {"x": 1}}) == {"x": 1}
+
+
+def test_extract_response_raises_on_error_code():
+    with pytest.raises(BungieApiError, match="bad token"):
+        extract_response({"ErrorCode": 99, "Message": "bad token"})
