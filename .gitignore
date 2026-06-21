@@ -12,3 +12,4 @@ dist/
 .certs/
 *.crt
 *.key
+*.egg-info/
