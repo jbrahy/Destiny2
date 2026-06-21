@@ -341,6 +341,15 @@ async def transfer(payload: dict) -> dict:
                 await equip_item(mtype, instance_id, target, access, settings, client)
         except BungieApiError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Bungie rejected the move (HTTP {exc.response.status_code}). "
+                    "If you haven't re-logged-in since adding the move permission, click "
+                    "Re-login and try again."
+                ),
+            )
         fresh = await get_profile(mtype, mid, access, settings, client)
     kv_set(conn, "profile_cache", json.dumps(fresh))
     manifest = load_cached_manifest(conn)

@@ -15,6 +15,23 @@ def extract_response(payload: dict) -> dict:
         raise BungieApiError(payload.get("Message") or "Bungie API error")
     return payload["Response"]
 
+
+def _raise_for_bungie(resp: httpx.Response) -> None:
+    """Surface Bungie's error envelope (ErrorStatus/Message) even when the call
+    comes back with a non-2xx HTTP status, instead of an opaque HTTP error."""
+    try:
+        data = resp.json()
+    except ValueError:
+        resp.raise_for_status()
+        return
+    if isinstance(data, dict) and "ErrorCode" in data:
+        if data.get("ErrorCode") != 1:
+            status = data.get("ErrorStatus", "")
+            message = data.get("Message") or "Bungie API error"
+            raise BungieApiError(f"{message} ({status})" if status else message)
+        return
+    resp.raise_for_status()
+
 _BASE = "https://www.bungie.net/Platform"
 _MASTERWORK_STATE = 4
 PROFILE_COMPONENTS = "102,200,201,205,300,302,304,305,310"
@@ -168,8 +185,7 @@ async def transfer_item(
         },
         headers=_headers(settings, access_token),
     )
-    resp.raise_for_status()
-    extract_response(resp.json())
+    _raise_for_bungie(resp)
 
 
 async def equip_item(
@@ -181,8 +197,7 @@ async def equip_item(
         json={"itemId": instance_id, "characterId": character_id, "membershipType": membership_type},
         headers=_headers(settings, access_token),
     )
-    resp.raise_for_status()
-    extract_response(resp.json())
+    _raise_for_bungie(resp)
 
 
 async def get_memberships(access_token: str, settings: Settings, client: httpx.AsyncClient) -> dict:
