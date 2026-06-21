@@ -37,3 +37,18 @@ def test_ignores_non_wishlist_lines():
     total = sum(len(v) for v in wl.rolls_by_item.values())
     total += sum(len(v) for v in wl.trash_by_item.values())
     assert total == 4
+
+
+def test_parses_line_with_tags_segment_and_no_notes():
+    wl = parse_wishlist("dimwishlist:item=300&perks=7,8|tags:pve,mkb")
+    rolls = wl.rolls_by_item[300]
+    assert rolls[0].perks == frozenset({7, 8})
+    assert "pve" in rolls[0].tags
+    assert rolls[0].notes == ""
+
+
+def test_parses_line_with_whitespace_before_notes():
+    wl = parse_wishlist("dimwishlist:item=400&perks=1,2 #notes:spaced out")
+    rolls = wl.rolls_by_item[400]
+    assert rolls[0].perks == frozenset({1, 2})
+    assert rolls[0].notes == "spaced out"
