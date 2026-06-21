@@ -44,6 +44,20 @@ class OwnedWeapon:
 
 
 @dataclass
+class ArmorPiece:
+    instance_id: str
+    item_hash: int
+    name: str
+    slot: str
+    class_name: str
+    power: int
+    is_exotic: bool
+    is_masterworked: bool
+    stats: dict[str, int]
+    location: str
+
+
+@dataclass
 class Recommendation:
     weapon: OwnedWeapon
     verdict: Verdict

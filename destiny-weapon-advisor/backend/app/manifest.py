@@ -34,6 +34,12 @@ class Manifest:
     def is_weapon(self, item_hash: int) -> bool:
         return self._def(item_hash).get("itemType") == 3
 
+    def is_armor(self, item_hash: int) -> bool:
+        return self._def(item_hash).get("itemType") == 2
+
+    def item_class_type(self, item_hash: int) -> int:
+        return self._def(item_hash).get("classType", 3)
+
     def ammo_type(self, item_hash: int) -> str:
         ammo = self._def(item_hash).get("equippingBlock", {}).get("ammoType", 0)
         return _AMMO_TYPES.get(ammo, "")

@@ -2,7 +2,7 @@ import httpx
 
 from app.config import Settings
 from app.manifest import Manifest
-from app.models import OwnedWeapon
+from app.models import ArmorPiece, OwnedWeapon
 
 
 class BungieApiError(Exception):
@@ -99,6 +99,61 @@ def assemble_weapons(profile: dict, manifest: Manifest) -> list[OwnedWeapon]:
             )
         )
     return weapons
+
+
+_CLASS_ITEM_TYPES = {"Hunter Cloak", "Titan Mark", "Warlock Bond"}
+
+
+def _gather_items(profile: dict) -> list[tuple[dict, str]]:
+    raw: list[tuple[dict, str]] = []
+    raw += [(it, "Vault") for it in profile.get("profileInventory", {}).get("data", {}).get("items", [])]
+    for cid, bucket in profile.get("characterInventories", {}).get("data", {}).items():
+        raw += [(it, cid) for it in bucket.get("items", [])]
+    for cid, bucket in profile.get("characterEquipment", {}).get("data", {}).items():
+        raw += [(it, cid) for it in bucket.get("items", [])]
+    return raw
+
+
+def assemble_armor(profile: dict, manifest: Manifest) -> list[ArmorPiece]:
+    components = profile.get("itemComponents", {})
+    instances = components.get("instances", {}).get("data", {})
+    item_stats = components.get("stats", {}).get("data", {})
+    characters = profile.get("characters", {}).get("data", {})
+    char_class = {
+        cid: CLASS_TYPES.get(c.get("classType"), "Character") for cid, c in characters.items()
+    }
+
+    pieces: list[ArmorPiece] = []
+    for item, holder in _gather_items(profile):
+        instance_id = item.get("itemInstanceId")
+        item_hash = item.get("itemHash")
+        if not instance_id or not manifest.is_armor(item_hash):
+            continue
+        slot = manifest.item_type(item_hash)
+        if slot in _CLASS_ITEM_TYPES:
+            slot = "Class Item"
+        inst = instances.get(instance_id, {})
+        raw_stats = item_stats.get(instance_id, {}).get("stats", {})
+        stats = {}
+        for stat_hash, entry in raw_stats.items():
+            stat_name = manifest.stat_name(int(stat_hash))
+            if stat_name:
+                stats[stat_name] = entry.get("value", 0)
+        pieces.append(
+            ArmorPiece(
+                instance_id=instance_id,
+                item_hash=item_hash,
+                name=manifest.name(item_hash),
+                slot=slot,
+                class_name=CLASS_TYPES.get(manifest.item_class_type(item_hash), "Any"),
+                power=inst.get("primaryStat", {}).get("value", 0),
+                is_exotic=manifest.tier_type(item_hash) == 6,
+                is_masterworked=bool(item.get("state", 0) & _MASTERWORK_STATE),
+                stats=stats,
+                location="Vault" if holder == "Vault" else char_class.get(holder, "Character"),
+            )
+        )
+    return pieces
 
 
 async def transfer_item(

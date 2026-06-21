@@ -1,5 +1,17 @@
 export type Verdict = "god_roll" | "good" | "upgrade" | "no_data" | "dismantle";
 
+export interface ArmorPiece {
+  instanceId: string;
+  name: string;
+  slot: string;
+  className: string;
+  power: number;
+  isExotic: boolean;
+  isMasterworked: boolean;
+  stats: Record<string, number>;
+  location: string;
+}
+
 export interface Character {
   id: string;
   className: string;

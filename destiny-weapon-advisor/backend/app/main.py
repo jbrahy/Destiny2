@@ -7,7 +7,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import RedirectResponse
 
 from app.bungie_client import (
-    CLASS_TYPES, assemble_weapons, equip_item, get_memberships, get_profile, transfer_item,
+    CLASS_TYPES, assemble_armor, assemble_weapons, equip_item, get_memberships,
+    get_profile, transfer_item,
 )
 from app.bungie_client import BungieApiError
 from app.bungie_oauth import build_authorize_url, exchange_code, refresh_tokens
@@ -157,7 +158,23 @@ def _compute_weapons(conn, manifest: Manifest, profile: dict) -> dict:
         "cachedAt": time.time(),
     }
     kv_set(conn, "weapons_cache", json.dumps(result))
+    armor = assemble_armor(profile, manifest)
+    kv_set(conn, "armor_cache", json.dumps([_armor_to_dict(a) for a in armor]))
     return result
+
+
+def _armor_to_dict(a) -> dict:
+    return {
+        "instanceId": a.instance_id,
+        "name": a.name,
+        "slot": a.slot,
+        "className": a.class_name,
+        "power": a.power,
+        "isExotic": a.is_exotic,
+        "isMasterworked": a.is_masterworked,
+        "stats": a.stats,
+        "location": a.location,
+    }
 
 
 def _recompute_from_cache(conn) -> bool:
@@ -234,6 +251,17 @@ def put_perk(payload: dict) -> dict:
     )
     _recompute_from_cache(conn)
     return {"ok": True}
+
+
+@app.get("/api/armor")
+def get_armor() -> dict:
+    conn = get_conn(get_settings().db_path)
+    cached = kv_get(conn, "armor_cache")
+    armor = json.loads(cached) if cached else []
+    stat_names: set[str] = set()
+    for piece in armor:
+        stat_names.update(piece["stats"].keys())
+    return {"armor": armor, "statNames": sorted(stat_names)}
 
 
 def _find_item_location(profile: dict, instance_id: str) -> str | None:

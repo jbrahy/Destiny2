@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchStatus } from "./api";
 import { Login } from "./components/Login";
+import { ArmorPage } from "./components/ArmorPage";
 import { Nav, Section } from "./components/Nav";
 import { PerksPage } from "./components/PerksPage";
 import { Placeholder } from "./components/Placeholder";
@@ -28,12 +29,7 @@ export default function App() {
           </>
         )}
         {section === "perks" && <PerksPage />}
-        {section === "armor" && (
-          <Placeholder
-            title="Armor Optimizer"
-            blurb="Read your armor and find the best stat-tier loadouts for each character."
-          />
-        )}
+        {section === "armor" && <ArmorPage />}
         {section === "builds" && (
           <Placeholder
             title="Subclass Builds"

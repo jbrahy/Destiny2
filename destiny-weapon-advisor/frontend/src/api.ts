@@ -1,4 +1,4 @@
-import { Character, WeaponDto, WeaponTypePerks } from "./types";
+import { ArmorPiece, Character, WeaponDto, WeaponTypePerks } from "./types";
 
 export const loginUrl = "/api/login";
 
@@ -34,6 +34,12 @@ export async function savePerkRating(body: {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Failed to save rating (${res.status})`);
+}
+
+export async function fetchArmor(): Promise<{ armor: ArmorPiece[]; statNames: string[] }> {
+  const res = await fetch("/api/armor");
+  if (!res.ok) throw new Error(`Failed to load armor (${res.status})`);
+  return res.json();
 }
 
 export async function fetchCharacters(): Promise<Character[]> {

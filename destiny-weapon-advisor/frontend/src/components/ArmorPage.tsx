@@ -1,0 +1,181 @@
+import { useEffect, useMemo, useState } from "react";
+import { fetchArmor } from "../api";
+import { ArmorPiece } from "../types";
+
+const SLOTS = ["Helmet", "Gauntlets", "Chest Armor", "Leg Armor", "Class Item"];
+const CLASSES = ["Titan", "Hunter", "Warlock"];
+
+function objective(piece: ArmorPiece, stats: string[]): number {
+  if (stats.length === 0) return Object.values(piece.stats).reduce((a, b) => a + b, 0);
+  return stats.reduce((sum, s) => sum + (piece.stats[s] || 0), 0);
+}
+
+// Best piece per slot maximizing the objective, allowing at most one exotic overall.
+function optimize(pool: ArmorPiece[], stats: string[]) {
+  const bySlot: Record<string, ArmorPiece[]> = {};
+  for (const p of pool) (bySlot[p.slot] ||= []).push(p);
+
+  const chosen: Record<string, ArmorPiece | null> = {};
+  const exoticGain: { slot: string; piece: ArmorPiece; gain: number }[] = [];
+
+  for (const slot of SLOTS) {
+    const pieces = bySlot[slot] || [];
+    const nonExotic = pieces.filter((p) => !p.isExotic);
+    const best = (arr: ArmorPiece[]) =>
+      arr.length ? arr.reduce((a, b) => (objective(b, stats) > objective(a, stats) ? b : a)) : null;
+    const bestNon = best(nonExotic);
+    const bestExo = best(pieces.filter((p) => p.isExotic));
+    chosen[slot] = bestNon ?? bestExo; // fall back to exotic if no legendary in slot
+    if (bestExo) {
+      const baseline = bestNon ? objective(bestNon, stats) : 0;
+      exoticGain.push({ slot, piece: bestExo, gain: objective(bestExo, stats) - baseline });
+    }
+  }
+
+  // Apply the single most beneficial exotic swap (≤ 1 exotic), unless a slot is
+  // already forced to an exotic (no legendary available there).
+  const forcedExotic = SLOTS.some((s) => chosen[s]?.isExotic);
+  if (!forcedExotic && exoticGain.length) {
+    const best = exoticGain.reduce((a, b) => (b.gain > a.gain ? b : a));
+    if (best.gain > 0) chosen[best.slot] = best.piece;
+  }
+  return chosen;
+}
+
+export function ArmorPage() {
+  const [armor, setArmor] = useState<ArmorPiece[]>([]);
+  const [statNames, setStatNames] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [cls, setCls] = useState("Hunter");
+  const [stats, setStats] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetchArmor()
+      .then((d) => { setArmor(d.armor); setStatNames(d.statNames); })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const availableClasses = useMemo(
+    () => CLASSES.filter((c) => armor.some((a) => a.className === c)),
+    [armor],
+  );
+
+  const pool = useMemo(
+    () => armor.filter((a) => a.className === cls || a.className === "Any"),
+    [armor, cls],
+  );
+
+  const chosen = useMemo(() => optimize(pool, stats), [pool, stats]);
+
+  const totals = useMemo(() => {
+    const t: Record<string, number> = {};
+    for (const slot of SLOTS) {
+      const p = chosen[slot];
+      if (!p) continue;
+      for (const [s, v] of Object.entries(p.stats)) t[s] = (t[s] || 0) + v;
+    }
+    return t;
+  }, [chosen]);
+
+  function toggleStat(s: string) {
+    setStats((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+  }
+
+  if (loading) return <div>Loading armor…</div>;
+  if (error) return <div style={{ color: "#c62828" }}>Error: {error}</div>;
+  if (armor.length === 0)
+    return (
+      <div style={{ color: "#666" }}>
+        Open the <strong>Weapons</strong> tab first — armor is read from the same inventory pull.
+      </div>
+    );
+
+  const shownStats = stats.length ? stats : statNames;
+
+  return (
+    <div>
+      <h1 style={{ marginTop: 0 }}>Armor Optimizer</h1>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        {(availableClasses.length ? availableClasses : CLASSES).map((c) => (
+          <button
+            key={c}
+            onClick={() => setCls(c)}
+            style={{
+              padding: "6px 14px", fontWeight: c === cls ? 700 : 400,
+              background: c === cls ? "#1b2838" : "#eee", color: c === cls ? "#fff" : "#333",
+              border: "none", borderRadius: 6, cursor: "pointer",
+            }}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <span style={{ fontSize: 13, color: "#666", marginRight: 8 }}>Prioritize stats:</span>
+        {statNames.map((s) => (
+          <label key={s} style={{ marginRight: 12, fontSize: 13 }}>
+            <input type="checkbox" checked={stats.includes(s)} onChange={() => toggleStat(s)} /> {s}
+          </label>
+        ))}
+        {stats.length === 0 && (
+          <span style={{ color: "#999", fontSize: 12 }}>(none selected → maximizing total stats)</span>
+        )}
+      </div>
+
+      <table style={{ borderCollapse: "collapse", width: "100%", maxWidth: 900 }}>
+        <thead>
+          <tr style={{ textAlign: "left", borderBottom: "2px solid #ddd" }}>
+            <th style={{ padding: 6 }}>Slot</th>
+            <th style={{ padding: 6 }}>Piece</th>
+            {shownStats.map((s) => (
+              <th key={s} style={{ padding: 6, textAlign: "right" }}>{s.slice(0, 4)}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {SLOTS.map((slot) => {
+            const p = chosen[slot];
+            return (
+              <tr key={slot} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                <td style={{ padding: 6, color: "#666" }}>{slot}</td>
+                <td style={{ padding: 6 }}>
+                  {p ? (
+                    <>
+                      {p.name}{" "}
+                      {p.isExotic && <span style={{ color: "#caa000", fontWeight: 700 }}>◆</span>}
+                      <span style={{ color: "#999", fontSize: 12 }}> · {p.location}</span>
+                    </>
+                  ) : (
+                    <span style={{ color: "#bbb" }}>— none —</span>
+                  )}
+                </td>
+                {shownStats.map((s) => (
+                  <td key={s} style={{ padding: 6, textAlign: "right" }}>{p?.stats[s] ?? 0}</td>
+                ))}
+              </tr>
+            );
+          })}
+          <tr style={{ borderTop: "2px solid #ddd", fontWeight: 700 }}>
+            <td style={{ padding: 6 }} colSpan={2}>Total</td>
+            {shownStats.map((s) => (
+              <td key={s} style={{ padding: 6, textAlign: "right" }}>{totals[s] || 0}</td>
+            ))}
+          </tr>
+          <tr style={{ color: "#1565c0" }}>
+            <td style={{ padding: 6 }} colSpan={2}>Tier (÷10)</td>
+            {shownStats.map((s) => (
+              <td key={s} style={{ padding: 6, textAlign: "right" }}>{Math.floor((totals[s] || 0) / 10)}</td>
+            ))}
+          </tr>
+        </tbody>
+      </table>
+      <p style={{ color: "#999", fontSize: 12, marginTop: 10 }}>
+        Best owned pieces per slot for your selected stats, max one exotic. Base armor stats only —
+        mods, masterwork bonuses, and fragments aren't added yet.
+      </p>
+    </div>
+  );
+}
