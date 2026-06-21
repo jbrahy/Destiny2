@@ -1,3 +1,4 @@
+import json
 import secrets
 import time
 
@@ -10,7 +11,7 @@ from app.bungie_oauth import build_authorize_url, exchange_code, refresh_tokens
 from app.config import get_settings
 from app.manifest import Manifest, load_manifest
 from app.scoring import score_inventory
-from app.storage import get_conn
+from app.storage import get_conn, kv_get, kv_set
 from app.wishlist import fetch_wishlist
 
 app = FastAPI(title="Destiny 2 Weapon Advisor")
@@ -114,9 +115,13 @@ async def _valid_access_token(settings, conn, client) -> tuple[str, int, str]:
 
 
 @app.get("/api/weapons")
-async def weapons() -> dict:
+async def weapons(refresh: bool = False) -> dict:
     settings = get_settings()
     conn = get_conn(settings.db_path)
+    if not refresh:
+        cached = kv_get(conn, "weapons_cache")
+        if cached:
+            return json.loads(cached)
     async with httpx.AsyncClient(
         timeout=120.0, headers={"X-API-Key": settings.bungie_api_key}
     ) as client:
@@ -126,7 +131,12 @@ async def weapons() -> dict:
         profile = await get_profile(mtype, mid, access, settings, client)
     owned = assemble_weapons(profile, manifest)
     recs = score_inventory(owned, wishlist)
-    return {"weapons": [recommendation_to_dict(r, manifest) for r in recs]}
+    result = {
+        "weapons": [recommendation_to_dict(r, manifest) for r in recs],
+        "cachedAt": time.time(),
+    }
+    kv_set(conn, "weapons_cache", json.dumps(result))
+    return result
 
 
 def run() -> None:

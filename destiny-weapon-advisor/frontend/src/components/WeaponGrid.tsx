@@ -9,21 +9,35 @@ const ORDER: Record<Verdict, number> = {
   god_roll: 0, upgrade: 1, good: 2, no_data: 3, dismantle: 4,
 };
 
+function sinceText(cachedAt?: number): string {
+  if (!cachedAt) return "";
+  const secs = Math.max(0, Date.now() / 1000 - cachedAt);
+  if (secs < 60) return "just now";
+  if (secs < 3600) return `${Math.floor(secs / 60)} min ago`;
+  return `${Math.floor(secs / 3600)} hr ago`;
+}
+
 export function WeaponGrid() {
   const [weapons, setWeapons] = useState<WeaponDto[]>([]);
+  const [cachedAt, setCachedAt] = useState<number | undefined>();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<WeaponDto | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     verdict: "all", weaponType: "all", search: "",
   });
 
-  useEffect(() => {
-    fetchWeapons()
-      .then(setWeapons)
+  function load(refresh: boolean) {
+    if (refresh) setRefreshing(true);
+    setError(null);
+    fetchWeapons(refresh)
+      .then((r) => { setWeapons(r.weapons); setCachedAt(r.cachedAt); })
       .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => { setLoading(false); setRefreshing(false); });
+  }
+
+  useEffect(() => { load(false); }, []);
 
   const types = useMemo(
     () => Array.from(new Set(weapons.map((w) => w.weaponType))).sort(),
@@ -43,6 +57,14 @@ export function WeaponGrid() {
 
   return (
     <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <button onClick={() => load(true)} disabled={refreshing}>
+          {refreshing ? "Refreshing…" : "↻ Refresh"}
+        </button>
+        <span style={{ color: "#888", fontSize: 13 }}>
+          {cachedAt ? `Last refreshed ${sinceText(cachedAt)}` : "Showing cached data"}
+        </span>
+      </div>
       <Filters state={filters} types={types} onChange={setFilters} />
       {selected && <WeaponDetail w={selected} onClose={() => setSelected(null)} />}
       <p style={{ color: "#666" }}>{shown.length} of {weapons.length} weapons</p>
