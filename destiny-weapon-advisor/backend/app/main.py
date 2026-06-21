@@ -2,7 +2,7 @@ import secrets
 import time
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import RedirectResponse
 
 from app.bungie_client import assemble_weapons, get_memberships, get_profile
@@ -10,7 +10,7 @@ from app.bungie_oauth import build_authorize_url, exchange_code, refresh_tokens
 from app.config import get_settings
 from app.manifest import Manifest, load_manifest
 from app.scoring import score_inventory
-from app.storage import get_conn, kv_get, kv_set
+from app.storage import get_conn
 from app.wishlist import fetch_wishlist
 
 app = FastAPI(title="Destiny 2 Weapon Advisor")
@@ -61,7 +61,9 @@ async def callback(code: str, state: str) -> RedirectResponse:
     _states.discard(state)
     settings = get_settings()
     conn = get_conn(settings.db_path)
-    async with httpx.AsyncClient(headers={"X-API-Key": settings.bungie_api_key}) as client:
+    async with httpx.AsyncClient(
+        timeout=30.0, headers={"X-API-Key": settings.bungie_api_key}
+    ) as client:
         tokens = await exchange_code(code, settings, client)
         access = tokens["access_token"]
         memberships = await get_memberships(access, settings, client)
