@@ -40,6 +40,19 @@ class Manifest:
         return dp.get("name", "")
 
 
+def load_cached_manifest(conn: sqlite3.Connection) -> Manifest | None:
+    """Load the manifest from the local cache only (no network). Returns None
+    if it has not been downloaded yet."""
+    raw = kv_get(conn, "manifest_items")
+    raw_stats = kv_get(conn, "manifest_stats")
+    if not raw or not raw_stats:
+        return None
+    return Manifest(
+        items={int(k): v for k, v in json.loads(raw).items()},
+        stats={int(k): v for k, v in json.loads(raw_stats).items()},
+    )
+
+
 async def load_manifest(client: httpx.AsyncClient, conn: sqlite3.Connection) -> Manifest:
     """Load the manifest. The passed httpx client MUST be constructed with an
     'X-API-Key' default header — the Bungie /Platform manifest endpoint requires it."""

@@ -17,4 +17,25 @@ export interface WeaponDto {
   frame: string;
   perkNames: string[];
   stats: Record<string, number>;
+  ratedPerks: RatedPerk[];
+}
+
+export interface RatedPerk {
+  name: string;
+  rating: string;
+  reason: string;
+  tags: string[];
+}
+
+export interface CatalogPerk {
+  name: string;
+  rating: string;
+  reason: string;
+  tags: string[];
+  isOverride: boolean;
+}
+
+export interface WeaponTypePerks {
+  weaponType: string;
+  perks: CatalogPerk[];
 }

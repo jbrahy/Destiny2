@@ -1,7 +1,8 @@
-export type Section = "weapons" | "armor" | "builds";
+export type Section = "weapons" | "perks" | "armor" | "builds";
 
 export const SECTIONS: { id: Section; label: string }[] = [
   { id: "weapons", label: "Weapons" },
+  { id: "perks", label: "Perks" },
   { id: "armor", label: "Armor" },
   { id: "builds", label: "Builds" },
 ];

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchStatus } from "./api";
 import { Login } from "./components/Login";
 import { Nav, Section } from "./components/Nav";
+import { PerksPage } from "./components/PerksPage";
 import { Placeholder } from "./components/Placeholder";
 import { WeaponGrid } from "./components/WeaponGrid";
 
@@ -26,6 +27,7 @@ export default function App() {
             <WeaponGrid />
           </>
         )}
+        {section === "perks" && <PerksPage />}
         {section === "armor" && (
           <Placeholder
             title="Armor Optimizer"

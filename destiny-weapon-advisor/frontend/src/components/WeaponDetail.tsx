@@ -27,11 +27,23 @@ export function WeaponDetail({ w, onClose }: { w: WeaponDto; onClose: () => void
       </p>
 
       <p style={{ margin: "0 0 4px" }}><strong>Verdict:</strong> {w.verdict.replace("_", " ")}</p>
-      {w.matchedPerks.length > 0 && (
-        <p style={{ margin: "0 0 4px" }}><strong>God-roll perks matched:</strong> {w.matchedPerks.join(", ")}</p>
+      {w.tags.length > 0 && <p style={{ margin: "0 0 4px" }}><strong>Best for:</strong> {w.tags.join(", ")}</p>}
+
+      {w.ratedPerks.length > 0 ? (
+        <>
+          <h3 style={{ margin: "12px 0 4px" }}>Why (rated perks)</h3>
+          {w.ratedPerks.map((p) => (
+            <div key={p.name} style={{ marginBottom: 3 }}>
+              <strong>{p.rating}</strong> · {p.name}
+              {p.reason && <span style={{ color: "#666" }}> — {p.reason}</span>}
+            </div>
+          ))}
+        </>
+      ) : (
+        <p style={{ margin: "8px 0 4px", color: "#666" }}>
+          None of this weapon's perks are rated yet — add ratings on the Perks tab.
+        </p>
       )}
-      <p style={{ margin: "0 0 4px" }}><strong>Why:</strong> {w.note || "No community note."}</p>
-      {w.tags.length > 0 && <p style={{ margin: "0 0 4px" }}><strong>Tags:</strong> {w.tags.join(", ")}</p>}
 
       {w.perkNames.length > 0 && (
         <>

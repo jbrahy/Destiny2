@@ -9,10 +9,10 @@ from fastapi.responses import RedirectResponse
 from app.bungie_client import assemble_weapons, get_memberships, get_profile
 from app.bungie_oauth import build_authorize_url, exchange_code, refresh_tokens
 from app.config import get_settings
-from app.manifest import Manifest, load_manifest
-from app.scoring import score_inventory
+from app.manifest import Manifest, load_cached_manifest, load_manifest
+from app.perk_ratings import TIER_SCORE, load_ratings, save_rating
+from app.perk_scoring import score_by_perks
 from app.storage import get_conn, kv_get, kv_set
-from app.wishlist import fetch_wishlist
 
 app = FastAPI(title="Destiny 2 Weapon Advisor")
 _states: set[str] = set()
@@ -114,6 +114,50 @@ async def _valid_access_token(settings, conn, client) -> tuple[str, int, str]:
     return access, mtype, mid
 
 
+def weapon_to_dict(weapon, info: dict) -> dict:
+    return {
+        "instanceId": weapon.instance_id,
+        "name": weapon.name,
+        "weaponType": weapon.weapon_type,
+        "element": weapon.element,
+        "location": weapon.location,
+        "isMasterworked": weapon.is_masterworked,
+        "verdict": info["verdict"].value,
+        "matchedPerks": [r["name"] for r in info["rated"] if TIER_SCORE.get(r["rating"], 0) >= 4],
+        "note": info["note"],
+        "tags": info["tags"],
+        "isDuplicate": info["is_duplicate"],
+        "power": weapon.power,
+        "ammoType": weapon.ammo_type,
+        "frame": weapon.frame,
+        "perkNames": weapon.perk_names,
+        "stats": weapon.stats,
+        "ratedPerks": info["rated"],
+    }
+
+
+def _compute_weapons(conn, manifest: Manifest, profile: dict) -> dict:
+    owned = assemble_weapons(profile, manifest)
+    ratings = load_ratings(conn)
+    scored = score_by_perks(owned, ratings)
+    result = {
+        "weapons": [weapon_to_dict(s["weapon"], s) for s in scored],
+        "cachedAt": time.time(),
+    }
+    kv_set(conn, "weapons_cache", json.dumps(result))
+    return result
+
+
+def _recompute_from_cache(conn) -> bool:
+    """Re-score the cached inventory with current ratings — no Bungie call."""
+    profile_raw = kv_get(conn, "profile_cache")
+    manifest = load_cached_manifest(conn)
+    if not profile_raw or manifest is None:
+        return False
+    _compute_weapons(conn, manifest, json.loads(profile_raw))
+    return True
+
+
 @app.get("/api/weapons")
 async def weapons(refresh: bool = False) -> dict:
     settings = get_settings()
@@ -127,16 +171,52 @@ async def weapons(refresh: bool = False) -> dict:
     ) as client:
         access, mtype, mid = await _valid_access_token(settings, conn, client)
         manifest = await load_manifest(client, conn)
-        wishlist = await fetch_wishlist(settings.wishlist_url, client)
         profile = await get_profile(mtype, mid, access, settings, client)
-    owned = assemble_weapons(profile, manifest)
-    recs = score_inventory(owned, wishlist)
-    result = {
-        "weapons": [recommendation_to_dict(r, manifest) for r in recs],
-        "cachedAt": time.time(),
-    }
-    kv_set(conn, "weapons_cache", json.dumps(result))
-    return result
+    kv_set(conn, "profile_cache", json.dumps(profile))
+    return _compute_weapons(conn, manifest, profile)
+
+
+@app.get("/api/perks")
+def get_perks() -> dict:
+    conn = get_conn(get_settings().db_path)
+    ratings = load_ratings(conn)
+    cached = kv_get(conn, "weapons_cache")
+    by_type: dict[str, set] = {}
+    if cached:
+        for w in json.loads(cached)["weapons"]:
+            wtype = w["weaponType"] or "Other"
+            by_type.setdefault(wtype, set()).update(w["perkNames"])
+
+    weapon_types = []
+    for wtype in sorted(by_type):
+        perks = []
+        for name in by_type[wtype]:
+            info = ratings.get(name, wtype)
+            perks.append({
+                "name": name,
+                "rating": info["rating"] if info else "",
+                "reason": info.get("reason", "") if info else "",
+                "tags": info.get("tags", []) if info else [],
+                "isOverride": ratings.is_override(name, wtype),
+            })
+        perks.sort(key=lambda p: (-TIER_SCORE.get(p["rating"], 0), p["name"]))
+        weapon_types.append({"weaponType": wtype, "perks": perks})
+    return {"weaponTypes": weapon_types}
+
+
+@app.put("/api/perks")
+def put_perk(payload: dict) -> dict:
+    conn = get_conn(get_settings().db_path)
+    save_rating(
+        conn,
+        payload["name"],
+        payload.get("weaponType", ""),
+        payload["rating"],
+        payload.get("reason", ""),
+        payload.get("tags", []),
+    )
+    _recompute_from_cache(conn)
+    return {"ok": True}
 
 
 def run() -> None:
