@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchWeapons } from "../api";
-import { Verdict, WeaponDto } from "../types";
+import { fetchCharacters, fetchWeapons } from "../api";
+import { Character, Verdict, WeaponDto } from "../types";
 import { FilterState, Filters } from "./Filters";
 import { WeaponCard } from "./WeaponCard";
 import { WeaponDetail } from "./WeaponDetail";
@@ -19,6 +19,7 @@ function sinceText(cachedAt?: number): string {
 
 export function WeaponGrid() {
   const [weapons, setWeapons] = useState<WeaponDto[]>([]);
+  const [characters, setCharacters] = useState<Character[]>([]);
   const [cachedAt, setCachedAt] = useState<number | undefined>();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -37,7 +38,10 @@ export function WeaponGrid() {
       .finally(() => { setLoading(false); setRefreshing(false); });
   }
 
-  useEffect(() => { load(false); }, []);
+  useEffect(() => {
+    load(false);
+    fetchCharacters().then(setCharacters).catch(() => setCharacters([]));
+  }, []);
 
   const types = useMemo(
     () => Array.from(new Set(weapons.map((w) => w.weaponType))).sort(),
@@ -66,7 +70,14 @@ export function WeaponGrid() {
         </span>
       </div>
       <Filters state={filters} types={types} onChange={setFilters} />
-      {selected && <WeaponDetail w={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <WeaponDetail
+          w={selected}
+          characters={characters}
+          onClose={() => setSelected(null)}
+          onMoved={() => { load(false); setSelected(null); }}
+        />
+      )}
       <p style={{ color: "#666" }}>{shown.length} of {weapons.length} weapons</p>
       <div
         style={{

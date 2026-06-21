@@ -6,7 +6,10 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import RedirectResponse
 
-from app.bungie_client import assemble_weapons, get_memberships, get_profile
+from app.bungie_client import (
+    CLASS_TYPES, assemble_weapons, equip_item, get_memberships, get_profile, transfer_item,
+)
+from app.bungie_client import BungieApiError
 from app.bungie_oauth import build_authorize_url, exchange_code, refresh_tokens
 from app.config import get_settings
 from app.manifest import Manifest, load_cached_manifest, load_manifest
@@ -117,6 +120,7 @@ async def _valid_access_token(settings, conn, client) -> tuple[str, int, str]:
 def weapon_to_dict(weapon, info: dict) -> dict:
     return {
         "instanceId": weapon.instance_id,
+        "itemHash": weapon.item_hash,
         "name": weapon.name,
         "weaponType": weapon.weapon_type,
         "element": weapon.element,
@@ -216,6 +220,91 @@ def put_perk(payload: dict) -> dict:
         payload.get("tags", []),
     )
     _recompute_from_cache(conn)
+    return {"ok": True}
+
+
+def _find_item_location(profile: dict, instance_id: str) -> str | None:
+    """Return the character id holding the item, 'vault', or None if not found.
+    Returns 'equipped:<charId>' when the item is currently equipped."""
+    for cid, bucket in profile.get("characterEquipment", {}).get("data", {}).items():
+        for it in bucket.get("items", []):
+            if it.get("itemInstanceId") == instance_id:
+                return f"equipped:{cid}"
+    for cid, bucket in profile.get("characterInventories", {}).get("data", {}).items():
+        for it in bucket.get("items", []):
+            if it.get("itemInstanceId") == instance_id:
+                return cid
+    for it in profile.get("profileInventory", {}).get("data", {}).get("items", []):
+        if it.get("itemInstanceId") == instance_id:
+            return "vault"
+    return None
+
+
+@app.get("/api/characters")
+def get_characters() -> dict:
+    conn = get_conn(get_settings().db_path)
+    profile_raw = kv_get(conn, "profile_cache")
+    if not profile_raw:
+        return {"characters": []}
+    chars = json.loads(profile_raw).get("characters", {}).get("data", {})
+    out = [
+        {
+            "id": cid,
+            "className": CLASS_TYPES.get(c.get("classType"), "Character"),
+            "light": c.get("light", 0),
+            "lastPlayed": c.get("dateLastPlayed", ""),
+        }
+        for cid, c in chars.items()
+    ]
+    out.sort(key=lambda x: x["lastPlayed"], reverse=True)
+    for i, o in enumerate(out):
+        o["current"] = i == 0
+    return {"characters": out}
+
+
+@app.post("/api/transfer")
+async def transfer(payload: dict) -> dict:
+    instance_id = payload["instanceId"]
+    item_hash = payload["itemHash"]
+    target = payload["targetCharacterId"]
+    do_equip = payload.get("equip", False)
+    settings = get_settings()
+    conn = get_conn(settings.db_path)
+    profile_raw = kv_get(conn, "profile_cache")
+    if not profile_raw:
+        raise HTTPException(status_code=400, detail="Load your inventory first.")
+    profile = json.loads(profile_raw)
+    source = _find_item_location(profile, instance_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Item not found in your cached inventory.")
+    if source.startswith("equipped:"):
+        raise HTTPException(
+            status_code=400,
+            detail="That weapon is currently equipped — equip something else first, then move it.",
+        )
+
+    async with httpx.AsyncClient(
+        timeout=60.0, headers={"X-API-Key": settings.bungie_api_key}
+    ) as client:
+        access, mtype, mid = await _valid_access_token(settings, conn, client)
+        try:
+            if source != target:
+                if source != "vault":
+                    await transfer_item(
+                        mtype, item_hash, instance_id, source, True, access, settings, client
+                    )
+                await transfer_item(
+                    mtype, item_hash, instance_id, target, False, access, settings, client
+                )
+            if do_equip:
+                await equip_item(mtype, instance_id, target, access, settings, client)
+        except BungieApiError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        fresh = await get_profile(mtype, mid, access, settings, client)
+    kv_set(conn, "profile_cache", json.dumps(fresh))
+    manifest = load_cached_manifest(conn)
+    if manifest is not None:
+        _compute_weapons(conn, manifest, fresh)
     return {"ok": True}
 
 

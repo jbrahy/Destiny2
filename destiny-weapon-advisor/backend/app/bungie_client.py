@@ -101,6 +101,35 @@ def assemble_weapons(profile: dict, manifest: Manifest) -> list[OwnedWeapon]:
     return weapons
 
 
+async def transfer_item(
+    membership_type: int, item_hash: int, instance_id: str, character_id: str,
+    to_vault: bool, access_token: str, settings: Settings, client: httpx.AsyncClient,
+) -> None:
+    resp = await client.post(
+        f"{_BASE}/Destiny2/Actions/Items/TransferItem/",
+        json={
+            "itemReferenceHash": item_hash, "stackSize": 1, "transferToVault": to_vault,
+            "itemId": instance_id, "characterId": character_id, "membershipType": membership_type,
+        },
+        headers=_headers(settings, access_token),
+    )
+    resp.raise_for_status()
+    extract_response(resp.json())
+
+
+async def equip_item(
+    membership_type: int, instance_id: str, character_id: str,
+    access_token: str, settings: Settings, client: httpx.AsyncClient,
+) -> None:
+    resp = await client.post(
+        f"{_BASE}/Destiny2/Actions/Items/EquipItem/",
+        json={"itemId": instance_id, "characterId": character_id, "membershipType": membership_type},
+        headers=_headers(settings, access_token),
+    )
+    resp.raise_for_status()
+    extract_response(resp.json())
+
+
 async def get_memberships(access_token: str, settings: Settings, client: httpx.AsyncClient) -> dict:
     resp = await client.get(
         f"{_BASE}/User/GetMembershipsForCurrentUser/",

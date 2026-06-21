@@ -1,7 +1,16 @@
 export type Verdict = "god_roll" | "good" | "upgrade" | "no_data" | "dismantle";
 
+export interface Character {
+  id: string;
+  className: string;
+  light: number;
+  lastPlayed: string;
+  current: boolean;
+}
+
 export interface WeaponDto {
   instanceId: string;
+  itemHash: number;
   name: string;
   weaponType: string;
   element: string;

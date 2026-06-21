@@ -1,4 +1,6 @@
-import { WeaponDto } from "../types";
+import { useState } from "react";
+import { moveItem } from "../api";
+import { Character, WeaponDto } from "../types";
 
 function StatBar({ name, value }: { name: string; value: number }) {
   const pct = Math.max(0, Math.min(100, value));
@@ -13,9 +15,40 @@ function StatBar({ name, value }: { name: string; value: number }) {
   );
 }
 
-export function WeaponDetail({ w, onClose }: { w: WeaponDto; onClose: () => void }) {
+export function WeaponDetail({
+  w, characters, onClose, onMoved,
+}: {
+  w: WeaponDto;
+  characters: Character[];
+  onClose: () => void;
+  onMoved: () => void;
+}) {
   const meta = [w.weaponType, w.element, w.ammoType, w.location].filter(Boolean).join(" · ");
   const statEntries = Object.entries(w.stats);
+  const [equip, setEquip] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const [moveMsg, setMoveMsg] = useState<string | null>(null);
+
+  async function doMove(target: Character) {
+    const ok = window.confirm(
+      `Move "${w.name}" to your ${target.className}${equip ? " and equip it" : ""}?`,
+    );
+    if (!ok) return;
+    setMoving(true);
+    setMoveMsg(null);
+    try {
+      await moveItem({
+        instanceId: w.instanceId, itemHash: w.itemHash, targetCharacterId: target.id, equip,
+      });
+      setMoveMsg(`✓ Moved to ${target.className}${equip ? " and equipped" : ""}.`);
+      onMoved();
+    } catch (e) {
+      setMoveMsg(`✗ ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setMoving(false);
+    }
+  }
+
   return (
     <div style={{ border: "1px solid #ccc", borderRadius: 8, padding: 16, marginBottom: 16 }}>
       <button onClick={onClose} style={{ float: "right" }}>Close</button>
@@ -25,6 +58,30 @@ export function WeaponDetail({ w, onClose }: { w: WeaponDto; onClose: () => void
         {w.power > 0 && <strong>✦ {w.power} Power</strong>}
         {w.frame && <span> · {w.frame}</span>}
       </p>
+
+      {characters.length > 0 && (
+        <div style={{ background: "#f6f8fa", borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>
+          <strong style={{ fontSize: 13 }}>Move to: </strong>
+          {characters.map((c) => (
+            <button
+              key={c.id}
+              disabled={moving || w.location === c.className}
+              onClick={() => doMove(c)}
+              style={{ margin: "0 4px", padding: "4px 10px" }}
+            >
+              {c.className} {c.current ? "(current)" : ""}
+            </button>
+          ))}
+          <label style={{ marginLeft: 8, fontSize: 13 }}>
+            <input type="checkbox" checked={equip} onChange={(e) => setEquip(e.target.checked)} /> equip
+          </label>
+          {moveMsg && (
+            <div style={{ marginTop: 6, fontSize: 13, color: moveMsg.startsWith("✓") ? "#2e7d32" : "#c62828" }}>
+              {moveMsg}
+            </div>
+          )}
+        </div>
+      )}
 
       <p style={{ margin: "0 0 4px" }}><strong>Verdict:</strong> {w.verdict.replace("_", " ")}</p>
       {w.tags.length > 0 && <p style={{ margin: "0 0 4px" }}><strong>Best for:</strong> {w.tags.join(", ")}</p>}

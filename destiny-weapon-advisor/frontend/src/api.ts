@@ -1,4 +1,4 @@
-import { WeaponDto, WeaponTypePerks } from "./types";
+import { Character, WeaponDto, WeaponTypePerks } from "./types";
 
 export const loginUrl = "/api/login";
 
@@ -34,4 +34,24 @@ export async function savePerkRating(body: {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Failed to save rating (${res.status})`);
+}
+
+export async function fetchCharacters(): Promise<Character[]> {
+  const res = await fetch("/api/characters");
+  if (!res.ok) throw new Error(`Failed to load characters (${res.status})`);
+  return (await res.json()).characters as Character[];
+}
+
+export async function moveItem(body: {
+  instanceId: string; itemHash: number; targetCharacterId: string; equip: boolean;
+}): Promise<void> {
+  const res = await fetch("/api/transfer", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(data.detail || `Move failed (${res.status})`);
+  }
 }

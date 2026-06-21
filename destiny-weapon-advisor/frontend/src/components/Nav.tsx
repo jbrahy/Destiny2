@@ -35,6 +35,13 @@ export function Nav({ current, onChange }: { current: Section; onChange: (s: Sec
           );
         })}
       </nav>
+      <a
+        href="/api/login"
+        title="Re-authorize with Bungie (needed to enable moving/equipping items)"
+        style={{ marginLeft: "auto", color: "#cbd5e1", fontSize: 13 }}
+      >
+        Re-login
+      </a>
     </header>
   );
 }
