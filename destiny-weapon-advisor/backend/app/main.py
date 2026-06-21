@@ -93,7 +93,12 @@ async def _valid_access_token(settings, conn, client) -> tuple[str, int, str]:
         raise HTTPException(status_code=401, detail="Not authenticated")
     access, refresh, expires_at, mtype, mid = row
     if time.time() > expires_at - 60:
-        tokens = await refresh_tokens(refresh, settings, client)
+        try:
+            tokens = await refresh_tokens(refresh, settings, client)
+        except Exception:
+            conn.execute("DELETE FROM tokens")
+            conn.commit()
+            raise HTTPException(status_code=401, detail="Session expired; please log in again.")
         access = tokens["access_token"]
         conn.execute(
             "UPDATE tokens SET access_token = ?, refresh_token = ?, expires_at = ? WHERE id = 1",
