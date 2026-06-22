@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchArmor } from "../api";
-import { ArmorPiece } from "../types";
+import {
+  applyArmorSet, deleteArmorSet, fetchArmor, fetchArmorSets, fetchCharacters, saveArmorSet,
+} from "../api";
+import { ArmorPiece, ArmorSet, Character } from "../types";
+import { armorSetItems, armorSetTier } from "../armorSet";
 
 const SLOTS = ["Helmet", "Gauntlets", "Chest Armor", "Leg Armor", "Class Item"];
 const CLASSES = ["Titan", "Hunter", "Warlock"];
@@ -51,6 +54,70 @@ export function ArmorPage() {
   const [cls, setCls] = useState("Hunter");
   const [stats, setStats] = useState<string[]>([]);
   const [mins, setMins] = useState<Record<string, number>>({});
+  const [characters, setCharacters] = useState<Character[]>([]);
+  const [armorSets, setArmorSets] = useState<ArmorSet[]>([]);
+  const [setName, setSetName] = useState("");
+  const [targetChar, setTargetChar] = useState("");
+  const [saveMsg, setSaveMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    fetchCharacters().then(setCharacters).catch(() => setCharacters([]));
+    fetchArmorSets().then(setArmorSets).catch(() => setArmorSets([]));
+  }, []);
+
+  const classChars = useMemo(
+    () => characters.filter((c) => c.className === cls),
+    [characters, cls],
+  );
+
+  useEffect(() => {
+    setTargetChar(classChars[0]?.id ?? "");
+  }, [classChars]);
+
+  async function saveSet() {
+    if (!setName.trim() || !targetChar || setItems.length === 0) {
+      setSaveMsg("Enter a name and pick a character of this class.");
+      return;
+    }
+    setBusy(true);
+    setSaveMsg("");
+    try {
+      await saveArmorSet({
+        name: setName.trim(), className: cls, characterId: targetChar,
+        tier: armorSetTier(chosen), items: setItems,
+      });
+      setSaveMsg(`Saved "${setName.trim()}".`);
+      setSetName("");
+      fetchArmorSets().then(setArmorSets);
+    } catch (e) {
+      setSaveMsg(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applySet(s: ArmorSet) {
+    if (!window.confirm(`Apply "${s.name}"? This moves & equips ${s.items.length} pieces.`)) return;
+    setBusy(true);
+    setSaveMsg("");
+    try {
+      const results = await applyArmorSet(s.name);
+      const fail = results.filter((r) => !r.ok).length;
+      setSaveMsg(fail ? `Applied with ${fail} issue(s) — if it's a permission error, click Re-login.`
+        : `✓ Applied "${s.name}".`);
+    } catch (e) {
+      setSaveMsg(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeSet(s: ArmorSet) {
+    if (!window.confirm(`Delete armor set "${s.name}"?`)) return;
+    await deleteArmorSet(s.name);
+    fetchArmorSets().then(setArmorSets);
+  }
 
   useEffect(() => {
     fetchArmor()
@@ -75,6 +142,7 @@ export function ArmorPage() {
     [stats, minStats],
   );
   const chosen = useMemo(() => optimize(pool, objectiveStats), [pool, objectiveStats]);
+  const setItems = useMemo(() => armorSetItems(chosen), [chosen]);
 
   const totals = useMemo(() => {
     const t: Record<string, number> = {};
@@ -215,6 +283,44 @@ export function ArmorPage() {
         (it maximizes those stats; a red total means it couldn't reach your minimum). Base armor
         stats only — mods and fragment bonuses aren't added in.
       </p>
+
+      {saveMsg && (
+        <p style={{ color: saveMsg.startsWith("✓") || saveMsg.startsWith("Saved") ? "#2e7d32" : "#c62828" }}>
+          {saveMsg}
+        </p>
+      )}
+
+      <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 14, marginTop: 16, marginBottom: 20, maxWidth: 640 }}>
+        <strong>Save this set</strong>
+        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+          <input
+            placeholder="Set name…" value={setName}
+            onChange={(e) => setSetName(e.target.value)}
+          />
+          <select value={targetChar} onChange={(e) => setTargetChar(e.target.value)}>
+            {classChars.length === 0 && <option value="">No {cls} character</option>}
+            {classChars.map((c) => <option key={c.id} value={c.id}>{c.className} ✦{c.light}</option>)}
+          </select>
+          <button onClick={saveSet} disabled={busy || !setItems.length || !targetChar}>Save</button>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
+          Saves {setItems.length} piece(s) · Tier {armorSetTier(chosen)} for {cls}.
+        </div>
+      </div>
+
+      <h2 style={{ marginTop: 8 }}>Saved armor sets</h2>
+      {armorSets.length === 0 && <p style={{ color: "var(--muted)" }}>None yet.</p>}
+      {armorSets.map((s) => (
+        <div key={s.name} style={{
+          display: "flex", alignItems: "center", gap: 12, border: "1px solid var(--border)",
+          borderRadius: 8, padding: "8px 12px", marginBottom: 8, maxWidth: 640,
+        }}>
+          <strong style={{ flex: 1 }}>{s.name}</strong>
+          <span style={{ color: "var(--muted)", fontSize: 13 }}>{s.className} · Tier {s.tier} · {s.items.length} pieces</span>
+          <button onClick={() => applySet(s)} disabled={busy}>Apply</button>
+          <button onClick={() => removeSet(s)} disabled={busy} style={{ color: "#c62828" }}>Delete</button>
+        </div>
+      ))}
     </div>
   );
 }
