@@ -14,7 +14,6 @@ from app.bungie_client import (
 )
 from app.bungie_client import BungieApiError
 from app.bungie_oauth import refresh_tokens
-from app.builds import load_activities, load_builds, save_activity, save_build
 from app.config import get_settings
 from app import db
 from app.deps import get_pool
@@ -342,13 +341,22 @@ async def put_perk(
 
 
 @app.get("/api/builds")
-def get_builds() -> dict:
-    return {"builds": load_builds(get_conn(get_settings().db_path))}
+async def get_builds(
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    return {"builds": await builds_repo.load_builds(pool, uid)}
 
 
 @app.put("/api/builds")
-def put_build(body: BuildBody) -> dict:
-    save_build(get_conn(get_settings().db_path), body.key, body.data)
+async def put_build(
+    body: BuildBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    await builds_repo.save_build(pool, uid, body.key, body.data)
     return {"ok": True}
 
 
@@ -381,13 +389,22 @@ def put_tag(body: TagBody) -> dict:
 
 
 @app.get("/api/activities")
-def get_activities() -> dict:
-    return {"activities": load_activities(get_conn(get_settings().db_path))}
+async def get_activities(
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    return {"activities": await builds_repo.load_activities(pool, uid)}
 
 
 @app.put("/api/activities")
-def put_activity(body: ActivityBody) -> dict:
-    save_activity(get_conn(get_settings().db_path), body.name, body.data)
+async def put_activity(
+    body: ActivityBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    await builds_repo.save_activity(pool, uid, body.name, body.data)
     return {"ok": True}
 
 
@@ -396,24 +413,29 @@ _ACTIVITY_TYPE_KEEP = {"raid", "dungeon", "nightfall", "exotic mission", "story"
 
 
 @app.get("/api/activities/catalog")
-async def activities_catalog() -> dict:
+async def activities_catalog(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
     """Distinct build-relevant activity names pulled from the Destiny manifest
-    (raids/dungeons/nightfalls/etc.), cached locally after the first fetch."""
+    (raids/dungeons/nightfalls/etc.), cached globally after the first fetch.
+    This data is account-independent so it uses the manifest cache, not per-user cache."""
     settings = get_settings()
-    conn = get_conn(settings.db_path)
-    cached = kv_get(conn, "activity_catalog")
+    cached = await cache.manifest_get(pool, "activity_catalog")
     if cached:
         return {"catalog": json.loads(cached)}
+    throttle = request.app.state.throttle
     async with httpx.AsyncClient(
         timeout=120.0, headers={"X-API-Key": settings.bungie_api_key}
     ) as client:
-        meta = await client.get("https://www.bungie.net/Platform/Destiny2/Manifest/")
+        meta = await throttle.run(lambda: client.get("https://www.bungie.net/Platform/Destiny2/Manifest/"))
         meta.raise_for_status()
         paths = meta.json()["Response"]["jsonWorldComponentContentPaths"]["en"]
-        adefs = (await client.get(
-            "https://www.bungie.net" + paths["DestinyActivityDefinition"], timeout=120.0)).json()
-        atypes = (await client.get(
-            "https://www.bungie.net" + paths["DestinyActivityTypeDefinition"], timeout=60.0)).json()
+        adefs = (await throttle.run(lambda: client.get(
+            "https://www.bungie.net" + paths["DestinyActivityDefinition"], timeout=120.0))).json()
+        atypes = (await throttle.run(lambda: client.get(
+            "https://www.bungie.net" + paths["DestinyActivityTypeDefinition"], timeout=60.0))).json()
     type_name = {int(k): v.get("displayProperties", {}).get("name", "") for k, v in atypes.items()}
     seen: dict[str, str] = {}
     for a in adefs.values():
@@ -425,7 +447,7 @@ async def activities_catalog() -> dict:
         ({"name": n, "type": t} for n, t in seen.items()),
         key=lambda x: (x["type"], x["name"]),
     )
-    kv_set(conn, "activity_catalog", json.dumps(catalog))
+    await cache.manifest_set(pool, "activity_catalog", json.dumps(catalog), "v1")
     return {"catalog": catalog}
 
 
