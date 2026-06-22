@@ -104,6 +104,16 @@ export function WeaponDetail({
       )}
 
       <p style={{ margin: "0 0 4px" }}><strong>Verdict:</strong> {w.verdict.replace("_", " ")}</p>
+      {w.verdictReason && (
+        <p style={{ margin: "0 0 4px", color: "var(--muted)", fontSize: 13 }}>
+          {w.verdictReason}
+        </p>
+      )}
+      {w.upgradePath && (
+        <p style={{ margin: "0 0 4px", fontSize: 13 }}>
+          <strong style={{ color: "var(--accent)" }}>↑ Upgrade path:</strong> {w.upgradePath}
+        </p>
+      )}
       {w.tags.length > 0 && <p style={{ margin: "0 0 4px" }}><strong>Best for:</strong> {w.tags.join(", ")}</p>}
 
       {w.ratedPerks.length > 0 ? (

@@ -6,7 +6,8 @@ function weapon(instanceId: string, itemHash: number) {
   return {
     instanceId, itemHash, name: "Gun", weaponType: "Hand Cannon", element: "Void",
     location: "Vault", isMasterworked: false, verdict: "good" as const, matchedPerks: [],
-    note: "", tags: [], isDuplicate: false, power: 0, ammoType: "Primary",
+    note: "", verdictReason: "", upgradePath: null,
+    tags: [], isDuplicate: false, power: 0, ammoType: "Primary",
     frame: "Adaptive", perkNames: [], stats: {}, ratedPerks: [], icon: "", equipped: false,
   };
 }

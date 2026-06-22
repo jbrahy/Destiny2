@@ -6,6 +6,7 @@ function weapon(p: Partial<WeaponDto>): WeaponDto {
   return {
     instanceId: "i", itemHash: 1, name: "Gun", weaponType: "Hand Cannon", element: "Void",
     location: "Vault", isMasterworked: false, verdict: "good", matchedPerks: [], note: "",
+    verdictReason: "", upgradePath: null,
     tags: [], isDuplicate: false, power: 0, ammoType: "Primary", frame: "Adaptive Frame",
     perkNames: [], stats: {}, ratedPerks: [], icon: "", equipped: false, ...p,
   };

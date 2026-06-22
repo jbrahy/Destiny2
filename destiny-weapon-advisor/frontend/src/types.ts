@@ -78,6 +78,8 @@ export interface WeaponDto {
   verdict: Verdict;
   matchedPerks: string[];
   note: string;
+  verdictReason: string;
+  upgradePath: string | null;
   tags: string[];
   isDuplicate: boolean;
   power: number;
