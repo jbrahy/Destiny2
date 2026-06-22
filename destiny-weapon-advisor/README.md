@@ -19,7 +19,7 @@ between your characters and the vault.
 - **Multiple accounts** — if you have more than one Destiny membership (e.g. Xbox and PSN that
   aren't cross-saved), it auto-selects your most recently played one and lets you switch.
 
-Everything is cached locally in SQLite; a **Refresh** button re-pulls from Bungie on demand.
+All inventory data and user settings are stored in **MySQL 8**; a **Refresh** button re-pulls from Bungie on demand.
 
 ---
 
@@ -27,6 +27,7 @@ Everything is cached locally in SQLite; a **Refresh** button re-pulls from Bungi
 
 - Python 3.11+
 - Node.js 18+
+- MySQL 8+ (local or Docker)
 - A free Bungie developer app (step 1)
 
 ## 1. Register a Bungie application
@@ -51,28 +52,51 @@ cd destiny-weapon-advisor/backend
 cp .env.example .env
 ```
 
-Paste your three secrets into `.env`:
+Paste your secrets into `.env`:
 
 ```
+# Bungie OAuth
 BUNGIE_API_KEY=...
 BUNGIE_CLIENT_ID=...
 BUNGIE_CLIENT_SECRET=...
+
+# MySQL 8 connection
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USER=advisor
+DB_PASSWORD=...
+DB_NAME=advisor
+
+# Security
+TOKEN_ENC_KEY=<32-byte hex — generate with: python -c "import secrets; print(secrets.token_hex(32))">
+SESSION_SECRET=<random string>
+COOKIE_SECURE=true        # set to false for http-only local dev
 ```
 
-The other defaults are correct as-is.
+> **Docker quick-start:** `docker run -d --name destiny-mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=rootpw -e MYSQL_DATABASE=advisor -e MYSQL_USER=advisor -e MYSQL_PASSWORD=advisorpw mysql:8.4`
 
-## 3. Run (single-server — recommended)
+## 3. Run database migrations
+
+```bash
+cd backend
+python -m scripts.migrate
+```
+
+This is idempotent — safe to re-run on every deploy.
+
+## 4. Run (single-server — recommended)
 
 ```bash
 ./scripts/run.sh
 ```
 
-This builds the frontend and starts the backend, which serves **both the app and the API** at
-**<https://localhost:8443>**. Open that URL, click **Login with Bungie**, accept the one-time
-self-signed-certificate warning, and approve the OAuth prompt.
+This loads `.env`, builds the frontend, runs migrations, and starts the backend, which serves
+**both the app and the API** at **<https://localhost:8443>**. Open that URL, click
+**Login with Bungie**, accept the one-time self-signed-certificate warning, and approve the
+OAuth prompt.
 
 > Equivalent manual steps: `cd frontend && npm install && npm run build`, then
-> `cd ../backend && pip install -e ".[dev]" && python -m app.main`.
+> `cd ../backend && pip install -e ".[dev]" && python -m scripts.migrate && python -m app.main`.
 
 > **First load** downloads the Destiny manifest (~tens of MB) and is cached after that.
 

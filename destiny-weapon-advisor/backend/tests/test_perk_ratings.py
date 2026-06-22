@@ -1,5 +1,10 @@
-from app.perk_ratings import PerkRatings, load_ratings, save_rating
-from app.storage import get_conn
+"""Tests for the PerkRatings class in app/perk_ratings.py.
+
+The SQLite-based load_ratings/save_rating functions were removed when the app
+migrated to MySQL.  Per-user round-trips are covered by test_user_data_repos.py.
+This file keeps the pure-Python PerkRatings logic tests.
+"""
+from app.perk_ratings import PerkRatings
 
 
 def test_override_precedence():
@@ -20,15 +25,3 @@ def test_notes_resolution():
     ratings = PerkRatings({}, overrides)
     assert ratings.notes("Frenzy", "Sniper Rifle") == "watch"
     assert ratings.notes("Frenzy", "Hand Cannon") == ""
-
-
-def test_save_and_load_round_trip():
-    conn = get_conn(":memory:")
-    save_rating(conn, "Outlaw", "Hand Cannon", "A", "fast reload", ["pve", "pvp"], "my note")
-    ratings = load_ratings(conn)
-    info = ratings.get("Outlaw", "Hand Cannon")
-    assert info["rating"] == "A"
-    assert info["tags"] == ["pve", "pvp"]
-    assert ratings.notes("Outlaw", "Hand Cannon") == "my note"
-    assert ratings.is_override("Outlaw", "Hand Cannon") is True
-    assert ratings.is_override("Outlaw", "Sniper Rifle") is False

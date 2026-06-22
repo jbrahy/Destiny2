@@ -1,5 +1,4 @@
 import json
-import sqlite3
 from pathlib import Path
 
 _SEED_PATH = Path(__file__).parent / "data" / "perk_ratings_seed.json"
@@ -38,45 +37,3 @@ class PerkRatings:
 
     def is_override(self, perk_name: str, weapon_type: str) -> bool:
         return (perk_name, weapon_type) in self._overrides
-
-
-def _ensure_table(conn: sqlite3.Connection) -> None:
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS perk_ratings ("
-        "perk_name TEXT, weapon_type TEXT, rating TEXT, reason TEXT, tags TEXT, notes TEXT, "
-        "PRIMARY KEY (perk_name, weapon_type))"
-    )
-    cols = [row[1] for row in conn.execute("PRAGMA table_info(perk_ratings)")]
-    if "notes" not in cols:
-        conn.execute("ALTER TABLE perk_ratings ADD COLUMN notes TEXT")
-    conn.commit()
-
-
-def load_ratings(conn: sqlite3.Connection) -> PerkRatings:
-    _ensure_table(conn)
-    overrides: dict = {}
-    for name, wtype, rating, reason, tags, notes in conn.execute(
-        "SELECT perk_name, weapon_type, rating, reason, tags, notes FROM perk_ratings"
-    ):
-        overrides[(name, wtype)] = {
-            "rating": rating,
-            "reason": reason or "",
-            "tags": tags.split(",") if tags else [],
-            "notes": notes or "",
-        }
-    return PerkRatings(load_seed(), overrides)
-
-
-def save_rating(
-    conn: sqlite3.Connection, perk_name: str, weapon_type: str,
-    rating: str, reason: str, tags: list[str], notes: str = "",
-) -> None:
-    _ensure_table(conn)
-    conn.execute(
-        "INSERT INTO perk_ratings (perk_name, weapon_type, rating, reason, tags, notes) "
-        "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(perk_name, weapon_type) DO UPDATE SET "
-        "rating = excluded.rating, reason = excluded.reason, tags = excluded.tags, "
-        "notes = excluded.notes",
-        (perk_name, weapon_type, rating, reason or "", ",".join(tags), notes or ""),
-    )
-    conn.commit()
