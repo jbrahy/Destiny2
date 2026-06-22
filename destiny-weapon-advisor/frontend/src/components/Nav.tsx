@@ -1,4 +1,5 @@
 import { AccountSwitcher } from "./AccountSwitcher";
+import { VaultCounts } from "./VaultCounts";
 
 export type Section = "weapons" | "perks" | "armor" | "builds" | "activities" | "loadouts";
 
@@ -39,6 +40,7 @@ export function Nav({ current, onChange }: { current: Section; onChange: (s: Sec
           );
         })}
       </nav>
+      <VaultCounts />
       <AccountSwitcher />
       <a
         href="/api/login"

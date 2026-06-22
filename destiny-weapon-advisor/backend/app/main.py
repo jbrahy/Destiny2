@@ -95,27 +95,6 @@ class PullPostmasterBody(BaseModel):
     stackSize: int = 1
 
 
-def recommendation_to_dict(rec, manifest: Manifest) -> dict:
-    return {
-        "instanceId": rec.weapon.instance_id,
-        "name": rec.weapon.name,
-        "weaponType": rec.weapon.weapon_type,
-        "element": rec.weapon.element,
-        "location": rec.weapon.location,
-        "isMasterworked": rec.weapon.is_masterworked,
-        "verdict": rec.verdict.value,
-        "matchedPerks": [manifest.name(p) for p in rec.matched_perks],
-        "note": rec.note,
-        "tags": rec.tags,
-        "isDuplicate": rec.is_duplicate,
-        "power": rec.weapon.power,
-        "ammoType": rec.weapon.ammo_type,
-        "frame": rec.weapon.frame,
-        "perkNames": rec.weapon.perk_names,
-        "stats": rec.weapon.stats,
-    }
-
-
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -469,6 +448,21 @@ def select_membership(body: MembershipSelectBody) -> dict:
         conn.execute("DELETE FROM kv WHERE key = ?", (key,))
     conn.commit()
     return {"ok": True}
+
+
+@app.get("/api/counts")
+def get_counts() -> dict:
+    conn = get_conn(get_settings().db_path)
+    weapons_raw = kv_get(conn, "weapons_cache")
+    armor_raw = kv_get(conn, "armor_cache")
+    weapons = json.loads(weapons_raw)["weapons"] if weapons_raw else []
+    armor = json.loads(armor_raw) if armor_raw else []
+    return {
+        "weapons": len(weapons),
+        "armor": len(armor),
+        "vaultWeapons": sum(1 for w in weapons if w.get("location") == "Vault"),
+        "vaultArmor": sum(1 for a in armor if a.get("location") == "Vault"),
+    }
 
 
 @app.get("/api/characters")
