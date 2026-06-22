@@ -11,6 +11,7 @@ export interface ArmorPiece {
   isMasterworked: boolean;
   stats: Record<string, number>;
   location: string;
+  icon: string;
 }
 
 export type Build = Record<string, string>;
@@ -57,6 +58,7 @@ export interface WeaponDto {
   perkNames: string[];
   stats: Record<string, number>;
   ratedPerks: RatedPerk[];
+  icon: string;
 }
 
 export interface RatedPerk {
@@ -72,6 +74,7 @@ export interface CatalogPerk {
   reason: string;
   notes: string;
   description: string;
+  icon: string;
   tags: string[];
   isOverride: boolean;
   dirty?: boolean;

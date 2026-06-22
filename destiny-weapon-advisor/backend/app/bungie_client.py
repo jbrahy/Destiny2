@@ -113,6 +113,7 @@ def assemble_weapons(profile: dict, manifest: Manifest) -> list[OwnedWeapon]:
                 frame=frame,
                 perk_names=perk_names,
                 stats=stats,
+                icon=manifest.icon(item_hash),
             )
         )
     return weapons
@@ -168,6 +169,7 @@ def assemble_armor(profile: dict, manifest: Manifest) -> list[ArmorPiece]:
                 is_masterworked=bool(item.get("state", 0) & _MASTERWORK_STATE),
                 stats=stats,
                 location="Vault" if holder == "Vault" else char_class.get(holder, "Character"),
+                icon=manifest.icon(item_hash),
             )
         )
     return pieces

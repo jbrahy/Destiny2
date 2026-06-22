@@ -31,7 +31,8 @@ _states: set[str] = set()
 # Every cache key derived from a single account's profile. Cleared together on
 # account switch so no cross-account data can survive (keep this list complete).
 _ACCOUNT_CACHE_KEYS = (
-    "weapons_cache", "armor_cache", "profile_cache", "perk_desc_map", "profile_membership_id",
+    "weapons_cache", "armor_cache", "profile_cache", "perk_desc_map", "perk_icon_map",
+    "profile_membership_id",
 )
 
 
@@ -208,19 +209,27 @@ def weapon_to_dict(weapon, info: dict) -> dict:
         "perkNames": weapon.perk_names,
         "stats": weapon.stats,
         "ratedPerks": info["rated"],
+        "icon": weapon.icon,
     }
 
 
 def _compute_weapons(conn, manifest: Manifest, profile: dict) -> dict:
     owned = assemble_weapons(profile, manifest)
     desc_map: dict[str, str] = {}
+    icon_map: dict[str, str] = {}
     for w in owned:
         for plug_hash in w.perks:
             name = manifest.name(plug_hash)
+            if not name or name.startswith("Unknown ("):
+                continue
             description = manifest.description(plug_hash)
-            if name and description and not name.startswith("Unknown ("):
+            if description:
                 desc_map[name] = description
+            icon = manifest.icon(plug_hash)
+            if icon:
+                icon_map[name] = icon
     kv_set(conn, "perk_desc_map", json.dumps(desc_map))
+    kv_set(conn, "perk_icon_map", json.dumps(icon_map))
     ratings = load_ratings(conn)
     scored = score_by_perks(owned, ratings)
     result = {
@@ -245,6 +254,7 @@ def _armor_to_dict(a) -> dict:
         "isMasterworked": a.is_masterworked,
         "stats": a.stats,
         "location": a.location,
+        "icon": a.icon,
     }
 
 
@@ -283,6 +293,8 @@ def get_perks() -> dict:
     ratings = load_ratings(conn)
     desc_raw = kv_get(conn, "perk_desc_map")
     descriptions = json.loads(desc_raw) if desc_raw else {}
+    icon_raw = kv_get(conn, "perk_icon_map")
+    icons = json.loads(icon_raw) if icon_raw else {}
     cached = kv_get(conn, "weapons_cache")
     by_type: dict[str, set] = {}
     if cached:
@@ -301,6 +313,7 @@ def get_perks() -> dict:
                 "reason": info.get("reason", "") if info else "",
                 "notes": ratings.notes(name, wtype),
                 "description": descriptions.get(name, ""),
+                "icon": icons.get(name, ""),
                 "tags": info.get("tags", []) if info else [],
                 "isOverride": ratings.is_override(name, wtype),
             })

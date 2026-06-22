@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchArmor, fetchCharacters, moveItem } from "../api";
 import { ArmorPiece, Character } from "../types";
+import { Icon } from "./Icon";
 
 const SLOTS = ["Helmet", "Gauntlets", "Chest Armor", "Leg Armor", "Class Item"];
 
@@ -165,13 +166,19 @@ export function ArmorList() {
       {selected && (
         <div style={{ border: "1px solid #ccc", borderRadius: 8, padding: 16, marginBottom: 16 }}>
           <button onClick={() => setSelected(null)} style={{ float: "right" }}>Close</button>
-          <h2 style={{ margin: "0 0 4px" }}>
-            {selected.name} {selected.isExotic && <span style={{ color: "#caa000" }}>◆</span>}
-          </h2>
-          <p style={{ margin: "0 0 8px", color: "#666" }}>
-            {selected.slot} · {selected.className} · {selected.location} · ✦{selected.power}
-            {selected.isMasterworked ? " · ★ Masterworked" : ""}
-          </p>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
+            <Icon path={selected.icon} size={56} alt={selected.name}
+              border={selected.isExotic ? "#caa000" : undefined} />
+            <div>
+              <h2 style={{ margin: "0 0 2px" }}>
+                {selected.name} {selected.isExotic && <span style={{ color: "#caa000" }}>◆</span>}
+              </h2>
+              <p style={{ margin: 0, color: "#666" }}>
+                {selected.slot} · {selected.className} · {selected.location} · ✦{selected.power}
+                {selected.isMasterworked ? " · ★ Masterworked" : ""}
+              </p>
+            </div>
+          </div>
           {characters.length > 0 && (
             <div style={{ background: "#f6f8fa", borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>
               <strong style={{ fontSize: 13 }}>Move to: </strong>
@@ -201,6 +208,9 @@ export function ArmorList() {
         </div>
       )}
       <p style={{ color: "#666" }}>{shown.length} of {armor.length} pieces</p>
+      {shown.length === 0 && (
+        <p style={{ color: "#999" }}>No armor matches your current tab/filters.</p>
+      )}
       <div style={{
         display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
       }}>
@@ -209,18 +219,24 @@ export function ArmorList() {
             key={a.instanceId}
             onClick={() => setSelected(a)}
             style={{
-              border: "1px solid #ddd", borderRadius: 8, padding: 12, cursor: "pointer",
+              display: "flex", gap: 10, alignItems: "flex-start",
+              border: "1px solid #ddd", borderRadius: 8, padding: 10, cursor: "pointer",
               borderLeft: `6px solid ${r.color}`,
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-              <strong>{a.name}{a.isExotic ? " ◆" : ""}</strong>
-              <span style={{ color: r.color, fontWeight: 600, whiteSpace: "nowrap" }}>{r.label}</span>
+            <Icon path={a.icon} size={44} alt={a.name} border={a.isExotic ? "#caa000" : undefined} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {a.name}{a.isExotic ? " ◆" : ""}
+                </strong>
+                <span style={{ color: r.color, fontWeight: 600, whiteSpace: "nowrap" }}>{r.label}</span>
+              </div>
+              <div style={{ fontSize: 12, color: "#666" }}>
+                {a.slot} · {a.location}{a.isMasterworked ? " · ★" : ""} · ✦{a.power}
+              </div>
+              <div style={{ fontSize: 12, color: "#333", marginTop: 2 }}>Total {total(a)}</div>
             </div>
-            <div style={{ fontSize: 12, color: "#666" }}>
-              {a.slot} · {a.location}{a.isMasterworked ? " · ★" : ""} · ✦{a.power}
-            </div>
-            <div style={{ fontSize: 12, color: "#333", marginTop: 2 }}>Total {total(a)}</div>
           </div>
         ))}
       </div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchPerks, savePerkRating } from "../api";
 import { CatalogPerk, WeaponTypePerks } from "../types";
+import { Icon } from "./Icon";
 
 const TIERS = ["", "S", "A", "B", "C", "D"];
 const TIER_COLOR: Record<string, string> = {
@@ -121,7 +122,8 @@ export function PerksPage() {
                           <option key={t} value={t}>{t || "—"}</option>
                         ))}
                       </select>
-                      <strong style={{ minWidth: 200 }}>{p.name}</strong>
+                      <Icon path={p.icon} size={28} alt={p.name} />
+                      <strong style={{ minWidth: 180 }}>{p.name}</strong>
                       {p.isOverride && (
                         <span title="weapon-type override" style={{ fontSize: 11, color: "#1565c0" }}>
                           ★ override
