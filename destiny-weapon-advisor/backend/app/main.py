@@ -796,6 +796,40 @@ def delete_armor_set(name: str) -> dict:
     return {"ok": True}
 
 
+@app.post("/api/armor-sets/apply")
+async def apply_armor_set(body: ApplyLoadoutBody) -> dict:
+    settings = get_settings()
+    conn = get_conn(settings.db_path)
+    _ensure_armor_sets(conn)
+    row = conn.execute("SELECT data FROM armor_sets WHERE name = ?", (body.name,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Armor set not found.")
+    armor_set = json.loads(row[0])
+    results = await _apply_item_set(conn, settings, armor_set["items"], armor_set["characterId"])
+    return {"results": results}
+
+
+async def _apply_item_set(conn, settings, items: list[dict], target: str) -> list[dict]:
+    """Move+equip each {instanceId, itemHash} item to the target character.
+    Returns per-item results. Shared by loadout-apply and armor-set-apply."""
+    profile = _load_profile_or_400(conn)
+    results = []
+    async with httpx.AsyncClient(
+        timeout=180.0, headers={"X-API-Key": settings.bungie_api_key}
+    ) as client:
+        access, mtype, mid = await _valid_access_token(settings, conn, client)
+        for it in items:
+            try:
+                await _move_one(client, settings, access, mtype, profile, it["instanceId"],
+                                it["itemHash"], target, True)
+                results.append({"instanceId": it["instanceId"], "ok": True})
+            except (BungieApiError, httpx.HTTPStatusError) as exc:
+                results.append({"instanceId": it["instanceId"], "ok": False, "error": str(exc)})
+        fresh = await get_profile(mtype, mid, access, settings, client)
+    _save_profile(conn, fresh, mid)
+    return results
+
+
 @app.post("/api/loadouts/apply")
 async def apply_loadout(body: ApplyLoadoutBody) -> dict:
     settings = get_settings()
@@ -805,22 +839,7 @@ async def apply_loadout(body: ApplyLoadoutBody) -> dict:
     if not row:
         raise HTTPException(status_code=404, detail="Loadout not found.")
     loadout = json.loads(row[0])
-    target = loadout["characterId"]
-    profile = _load_profile_or_400(conn)
-    results = []
-    async with httpx.AsyncClient(
-        timeout=180.0, headers={"X-API-Key": settings.bungie_api_key}
-    ) as client:
-        access, mtype, mid = await _valid_access_token(settings, conn, client)
-        for it in loadout["items"]:
-            try:
-                await _move_one(client, settings, access, mtype, profile, it["instanceId"],
-                                it["itemHash"], target, True)
-                results.append({"instanceId": it["instanceId"], "ok": True})
-            except (BungieApiError, httpx.HTTPStatusError) as exc:
-                results.append({"instanceId": it["instanceId"], "ok": False, "error": str(exc)})
-        fresh = await get_profile(mtype, mid, access, settings, client)
-    _save_profile(conn, fresh, mid)
+    results = await _apply_item_set(conn, settings, loadout["items"], loadout["characterId"])
     return {"results": results}
 
 
