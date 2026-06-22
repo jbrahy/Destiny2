@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from app.bungie_client import (
     CLASS_TYPES, assemble_armor, assemble_weapons, equip_item, get_memberships,
-    get_profile, transfer_item,
+    get_profile, pull_from_postmaster, transfer_item,
 )
 from app.bungie_client import BungieApiError
 from app.bungie_oauth import build_authorize_url, exchange_code, refresh_tokens
@@ -70,6 +70,29 @@ class ActivityBody(BaseModel):
 class TagBody(BaseModel):
     instanceId: str
     tag: str  # keep | junk | infuse | favorite | "" (clears)
+
+
+class BulkTransferBody(BaseModel):
+    items: list[dict]  # [{instanceId, itemHash}]
+    targetCharacterId: str  # a character id, or "vault"
+    equip: bool = False
+
+
+class LoadoutBody(BaseModel):
+    name: str
+    characterId: str
+    items: list[dict]  # [{instanceId, itemHash}]
+
+
+class ApplyLoadoutBody(BaseModel):
+    name: str
+
+
+class PullPostmasterBody(BaseModel):
+    itemHash: int
+    instanceId: str
+    characterId: str
+    stackSize: int = 1
 
 
 def recommendation_to_dict(rec, manifest: Manifest) -> dict:
@@ -470,66 +493,207 @@ def get_characters() -> dict:
     return {"characters": out}
 
 
-@app.post("/api/transfer")
-async def transfer(body: TransferBody) -> dict:
-    instance_id = body.instanceId
-    item_hash = body.itemHash
-    target = body.targetCharacterId
-    do_equip = body.equip
-    settings = get_settings()
-    conn = get_conn(settings.db_path)
-    profile_raw = kv_get(conn, "profile_cache")
-    if not profile_raw:
-        raise HTTPException(status_code=400, detail="Load your inventory first.")
-    profile = json.loads(profile_raw)
+async def _move_one(client, settings, access, mtype, profile, instance_id, item_hash, target, equip):
+    """Move one item to `target` ('vault' or a character id), optionally equip.
+    Raises BungieApiError on a problem (e.g. equipped on another character)."""
     source = _find_item_location(profile, instance_id)
     if source is None:
-        raise HTTPException(status_code=404, detail="Item not found in your cached inventory.")
+        raise BungieApiError("Item not found in your cached inventory.")
     if source.startswith("equipped:"):
-        raise HTTPException(
-            status_code=400,
-            detail="That weapon is currently equipped — equip something else first, then move it.",
-        )
+        if source.split(":", 1)[1] == target:
+            return  # already equipped on the target — nothing to do
+        raise BungieApiError("Item is equipped on another character — unequip it first.")
+    if target == "vault":
+        if source != "vault":
+            await transfer_item(mtype, item_hash, instance_id, source, True, access, settings, client)
+        return
+    if source != target:
+        if source != "vault":
+            await transfer_item(mtype, item_hash, instance_id, source, True, access, settings, client)
+        await transfer_item(mtype, item_hash, instance_id, target, False, access, settings, client)
+    if equip:
+        await equip_item(mtype, instance_id, target, access, settings, client)
 
-    async with httpx.AsyncClient(
-        timeout=60.0, headers={"X-API-Key": settings.bungie_api_key}
-    ) as client:
-        access, mtype, mid = await _valid_access_token(settings, conn, client)
-        if kv_get(conn, "profile_membership_id") != mid:
-            raise HTTPException(
-                status_code=400,
-                detail="Your cached inventory is for a different account — open Weapons and "
-                "Refresh, then try the move again.",
-            )
-        try:
-            if source != target:
-                if source != "vault":
-                    await transfer_item(
-                        mtype, item_hash, instance_id, source, True, access, settings, client
-                    )
-                await transfer_item(
-                    mtype, item_hash, instance_id, target, False, access, settings, client
-                )
-            if do_equip:
-                await equip_item(mtype, instance_id, target, access, settings, client)
-        except BungieApiError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-        except httpx.HTTPStatusError as exc:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Bungie rejected the move (HTTP {exc.response.status_code}). "
-                    "If you haven't re-logged-in since adding the move permission, click "
-                    "Re-login and try again."
-                ),
-            )
-        fresh = await get_profile(mtype, mid, access, settings, client)
+
+def _save_profile(conn, fresh: dict, mid: str) -> None:
     kv_set(conn, "profile_cache", json.dumps(fresh))
     kv_set(conn, "profile_membership_id", mid)
     manifest = load_cached_manifest(conn)
     if manifest is not None:
         _compute_weapons(conn, manifest, fresh)
+
+
+def _load_profile_or_400(conn) -> dict:
+    raw = kv_get(conn, "profile_cache")
+    if not raw:
+        raise HTTPException(status_code=400, detail="Load your inventory first.")
+    return json.loads(raw)
+
+
+@app.post("/api/transfer")
+async def transfer(body: TransferBody) -> dict:
+    settings = get_settings()
+    conn = get_conn(settings.db_path)
+    profile = _load_profile_or_400(conn)
+    async with httpx.AsyncClient(
+        timeout=60.0, headers={"X-API-Key": settings.bungie_api_key}
+    ) as client:
+        access, mtype, mid = await _valid_access_token(settings, conn, client)
+        if kv_get(conn, "profile_membership_id") != mid:
+            raise HTTPException(status_code=400, detail="Your cached inventory is for a different "
+                                "account — open Weapons and Refresh, then try the move again.")
+        try:
+            await _move_one(client, settings, access, mtype, profile, body.instanceId,
+                            body.itemHash, body.targetCharacterId, body.equip)
+        except BungieApiError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(status_code=400, detail=f"Bungie rejected the move (HTTP "
+                                f"{exc.response.status_code}). If you haven't re-logged-in since "
+                                "adding the move permission, click Re-login and try again.")
+        fresh = await get_profile(mtype, mid, access, settings, client)
+    _save_profile(conn, fresh, mid)
     return {"ok": True}
+
+
+@app.post("/api/transfer/bulk")
+async def transfer_bulk(body: BulkTransferBody) -> dict:
+    settings = get_settings()
+    conn = get_conn(settings.db_path)
+    profile = _load_profile_or_400(conn)
+    results = []
+    async with httpx.AsyncClient(
+        timeout=180.0, headers={"X-API-Key": settings.bungie_api_key}
+    ) as client:
+        access, mtype, mid = await _valid_access_token(settings, conn, client)
+        if kv_get(conn, "profile_membership_id") != mid:
+            raise HTTPException(status_code=400, detail="Cached inventory is for a different "
+                                "account — Refresh first.")
+        for it in body.items:
+            try:
+                await _move_one(client, settings, access, mtype, profile, it["instanceId"],
+                                it["itemHash"], body.targetCharacterId, body.equip)
+                results.append({"instanceId": it["instanceId"], "ok": True})
+            except (BungieApiError, httpx.HTTPStatusError) as exc:
+                results.append({"instanceId": it["instanceId"], "ok": False, "error": str(exc)})
+        fresh = await get_profile(mtype, mid, access, settings, client)
+    _save_profile(conn, fresh, mid)
+    return {"results": results}
+
+
+_POSTMASTER_BUCKET = 215593132
+
+
+@app.get("/api/postmaster")
+def get_postmaster() -> dict:
+    conn = get_conn(get_settings().db_path)
+    profile_raw = kv_get(conn, "profile_cache")
+    manifest = load_cached_manifest(conn)
+    if not profile_raw or manifest is None:
+        return {"items": []}
+    profile = json.loads(profile_raw)
+    chars = profile.get("characters", {}).get("data", {})
+    items = []
+    for cid, bucket in profile.get("characterInventories", {}).get("data", {}).items():
+        for it in bucket.get("items", []):
+            if it.get("bucketHash") == _POSTMASTER_BUCKET:
+                ih = it.get("itemHash")
+                items.append({
+                    "instanceId": it.get("itemInstanceId", ""),
+                    "itemHash": ih,
+                    "name": manifest.name(ih),
+                    "icon": manifest.icon(ih),
+                    "characterId": cid,
+                    "className": CLASS_TYPES.get(chars.get(cid, {}).get("classType"), "Character"),
+                    "quantity": it.get("quantity", 1),
+                })
+    return {"items": items}
+
+
+@app.post("/api/postmaster/pull")
+async def pull_postmaster(body: PullPostmasterBody) -> dict:
+    settings = get_settings()
+    conn = get_conn(settings.db_path)
+    async with httpx.AsyncClient(
+        timeout=60.0, headers={"X-API-Key": settings.bungie_api_key}
+    ) as client:
+        access, mtype, mid = await _valid_access_token(settings, conn, client)
+        try:
+            await pull_from_postmaster(mtype, body.itemHash, body.instanceId, body.characterId,
+                                       body.stackSize, access, settings, client)
+        except (BungieApiError, httpx.HTTPStatusError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        fresh = await get_profile(mtype, mid, access, settings, client)
+    _save_profile(conn, fresh, mid)
+    return {"ok": True}
+
+
+def _ensure_loadouts(conn) -> None:
+    conn.execute("CREATE TABLE IF NOT EXISTS loadouts (name TEXT PRIMARY KEY, data TEXT)")
+    conn.commit()
+
+
+@app.get("/api/loadouts")
+def get_loadouts() -> dict:
+    conn = get_conn(get_settings().db_path)
+    _ensure_loadouts(conn)
+    out = []
+    for name, data in conn.execute("SELECT name, data FROM loadouts"):
+        d = json.loads(data)
+        d["name"] = name
+        out.append(d)
+    return {"loadouts": out}
+
+
+@app.put("/api/loadouts")
+def put_loadout(body: LoadoutBody) -> dict:
+    conn = get_conn(get_settings().db_path)
+    _ensure_loadouts(conn)
+    data = json.dumps({"characterId": body.characterId, "items": body.items})
+    conn.execute(
+        "INSERT INTO loadouts (name, data) VALUES (?, ?) "
+        "ON CONFLICT(name) DO UPDATE SET data = excluded.data",
+        (body.name, data),
+    )
+    conn.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/loadouts/{name}")
+def delete_loadout(name: str) -> dict:
+    conn = get_conn(get_settings().db_path)
+    _ensure_loadouts(conn)
+    conn.execute("DELETE FROM loadouts WHERE name = ?", (name,))
+    conn.commit()
+    return {"ok": True}
+
+
+@app.post("/api/loadouts/apply")
+async def apply_loadout(body: ApplyLoadoutBody) -> dict:
+    settings = get_settings()
+    conn = get_conn(settings.db_path)
+    _ensure_loadouts(conn)
+    row = conn.execute("SELECT data FROM loadouts WHERE name = ?", (body.name,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Loadout not found.")
+    loadout = json.loads(row[0])
+    target = loadout["characterId"]
+    profile = _load_profile_or_400(conn)
+    results = []
+    async with httpx.AsyncClient(
+        timeout=180.0, headers={"X-API-Key": settings.bungie_api_key}
+    ) as client:
+        access, mtype, mid = await _valid_access_token(settings, conn, client)
+        for it in loadout["items"]:
+            try:
+                await _move_one(client, settings, access, mtype, profile, it["instanceId"],
+                                it["itemHash"], target, True)
+                results.append({"instanceId": it["instanceId"], "ok": True})
+            except (BungieApiError, httpx.HTTPStatusError) as exc:
+                results.append({"instanceId": it["instanceId"], "ok": False, "error": str(exc)})
+        fresh = await get_profile(mtype, mid, access, settings, client)
+    _save_profile(conn, fresh, mid)
+    return {"results": results}
 
 
 # Serve the built frontend (production single-server mode). Declared after all

@@ -1,6 +1,6 @@
 import { AccountSwitcher } from "./AccountSwitcher";
 
-export type Section = "weapons" | "perks" | "armor" | "builds" | "activities";
+export type Section = "weapons" | "perks" | "armor" | "builds" | "activities" | "loadouts";
 
 export const SECTIONS: { id: Section; label: string }[] = [
   { id: "weapons", label: "Weapons" },
@@ -8,6 +8,7 @@ export const SECTIONS: { id: Section; label: string }[] = [
   { id: "armor", label: "Armor" },
   { id: "builds", label: "Builds" },
   { id: "activities", label: "Activities" },
+  { id: "loadouts", label: "Loadouts" },
 ];
 
 export function Nav({ current, onChange }: { current: Section; onChange: (s: Section) => void }) {
