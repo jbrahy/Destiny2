@@ -1,4 +1,6 @@
-import { ArmorPiece, Character, Membership, WeaponDto, WeaponTypePerks } from "./types";
+import {
+  ActivityRec, ArmorPiece, Build, Character, Membership, WeaponDto, WeaponTypePerks,
+} from "./types";
 
 export const loginUrl = "/api/login";
 
@@ -52,6 +54,36 @@ export async function selectMembership(membershipType: number, membershipId: str
     body: JSON.stringify({ membershipType, membershipId }),
   });
   if (!res.ok) throw new Error(`Failed to switch account (${res.status})`);
+}
+
+export async function fetchBuilds(): Promise<Record<string, Build>> {
+  const res = await fetch("/api/builds");
+  if (!res.ok) throw new Error(`Failed to load builds (${res.status})`);
+  return (await res.json()).builds as Record<string, Build>;
+}
+
+export async function saveBuild(key: string, data: Build): Promise<void> {
+  const res = await fetch("/api/builds", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, data }),
+  });
+  if (!res.ok) throw new Error(`Failed to save build (${res.status})`);
+}
+
+export async function fetchActivities(): Promise<ActivityRec[]> {
+  const res = await fetch("/api/activities");
+  if (!res.ok) throw new Error(`Failed to load activities (${res.status})`);
+  return (await res.json()).activities as ActivityRec[];
+}
+
+export async function saveActivity(name: string, data: ActivityRec): Promise<void> {
+  const res = await fetch("/api/activities", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, data }),
+  });
+  if (!res.ok) throw new Error(`Failed to save activity (${res.status})`);
 }
 
 export async function fetchArmor(): Promise<{ armor: ArmorPiece[]; statNames: string[] }> {

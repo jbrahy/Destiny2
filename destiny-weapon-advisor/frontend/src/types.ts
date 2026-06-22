@@ -12,6 +12,17 @@ export interface ArmorPiece {
   location: string;
 }
 
+export type Build = Record<string, string>;
+
+export interface ActivityRec {
+  name: string;
+  type: string;
+  recommendedClass: string;
+  recommendedSubclass: string;
+  weapons: string;
+  notes: string;
+}
+
 export interface Membership {
   type: number;
   id: string;

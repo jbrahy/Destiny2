@@ -1,12 +1,13 @@
 import { AccountSwitcher } from "./AccountSwitcher";
 
-export type Section = "weapons" | "perks" | "armor" | "builds";
+export type Section = "weapons" | "perks" | "armor" | "builds" | "activities";
 
 export const SECTIONS: { id: Section; label: string }[] = [
   { id: "weapons", label: "Weapons" },
   { id: "perks", label: "Perks" },
   { id: "armor", label: "Armor" },
   { id: "builds", label: "Builds" },
+  { id: "activities", label: "Activities" },
 ];
 
 export function Nav({ current, onChange }: { current: Section; onChange: (s: Section) => void }) {
