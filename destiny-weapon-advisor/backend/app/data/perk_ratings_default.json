@@ -1,0 +1,5 @@
+[
+  {"perk_name": "Frenzy", "weapon_type": "", "rating": "S", "reason": "Great all-round damage, reload, and handling boost", "tags": ["dps"], "notes": ""},
+  {"perk_name": "Rampage", "weapon_type": "", "rating": "A", "reason": "Strong stacking damage on kills", "tags": [], "notes": ""},
+  {"perk_name": "Outlaw", "weapon_type": "", "rating": "A", "reason": "Fast reload on precision kills", "tags": [], "notes": ""}
+]

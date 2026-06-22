@@ -1,6 +1,11 @@
 """Per-user perk rating repository backed by MySQL user_perk_ratings table."""
+import json
+from pathlib import Path
+
 from app import db
 from app.perk_ratings import PerkRatings, load_seed
+
+_DEFAULTS_PATH = Path(__file__).parent.parent / "data" / "perk_ratings_default.json"
 
 
 async def load(pool, user_id: int) -> PerkRatings:
@@ -20,6 +25,27 @@ async def load(pool, user_id: int) -> PerkRatings:
             "notes": notes or "",
         }
     return PerkRatings(load_seed(), overrides)
+
+
+async def seed_defaults(pool, user_id: int) -> None:
+    """Seed the default perk rating overrides for a brand-new user.
+
+    Loads entries from perk_ratings_default.json and upserts each one.
+    Idempotent: the underlying save() uses INSERT ... ON DUPLICATE KEY UPDATE,
+    so calling this multiple times will not duplicate rows.
+    """
+    defaults = json.loads(_DEFAULTS_PATH.read_text())
+    for entry in defaults:
+        await save(
+            pool,
+            user_id,
+            entry["perk_name"],
+            entry.get("weapon_type", ""),
+            entry["rating"],
+            entry.get("reason", ""),
+            entry.get("tags", []),
+            entry.get("notes", ""),
+        )
 
 
 async def save(

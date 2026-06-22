@@ -10,6 +10,7 @@ from app.bungie_client import get_memberships, get_profile
 from app.bungie_oauth import build_authorize_url, exchange_code
 from app.config import get_settings
 from app.deps import get_pool
+from app.repositories import perk_ratings as perk_ratings_repo
 from app.repositories import sessions, tokens, users
 
 router = APIRouter()
@@ -77,10 +78,13 @@ async def callback(code: str, state: str, pool=Depends(get_pool)) -> RedirectRes
     # Upsert user
     bungie_mid = primary.get("membershipId", "")
     display_name = primary.get("displayName", "")
+    existing = await users.get_by_bungie_id(pool, bungie_mid)
     user_id = await users.upsert(
         pool, bungie_mid, display_name,
         primary["membershipType"], primary["membershipId"],
     )
+    if existing is None:
+        await perk_ratings_repo.seed_defaults(pool, user_id)
 
     # Store encrypted tokens
     expires_in = tokens_resp.get("expires_in", 3600)
