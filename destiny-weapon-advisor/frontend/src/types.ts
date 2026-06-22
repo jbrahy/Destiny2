@@ -128,3 +128,18 @@ export interface LoadoutSuggestion {
   elementCoverage: { elements: string[]; activityElement: string | null; matchesActivity: boolean };
   guidance: string;
 }
+
+export interface ArmorSetItem {
+  instanceId: string;
+  itemHash: number;
+  slot: string;
+  name: string;
+}
+
+export interface ArmorSet {
+  name: string;
+  className: string;
+  characterId: string;
+  tier: number;
+  items: ArmorSetItem[];
+}
