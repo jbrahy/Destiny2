@@ -42,6 +42,7 @@ class OwnedWeapon:
     perk_names: list[str] = field(default_factory=list)
     stats: dict[str, int] = field(default_factory=dict)
     icon: str = ""
+    equipped: bool = False
 
 
 @dataclass
@@ -57,6 +58,7 @@ class ArmorPiece:
     stats: dict[str, int]
     location: str
     icon: str = ""
+    equipped: bool = False
 
 
 @dataclass

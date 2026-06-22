@@ -86,6 +86,21 @@ export async function saveActivity(name: string, data: ActivityRec): Promise<voi
   if (!res.ok) throw new Error(`Failed to save activity (${res.status})`);
 }
 
+export async function fetchTags(): Promise<Record<string, string>> {
+  const res = await fetch("/api/tags");
+  if (!res.ok) throw new Error(`Failed to load tags (${res.status})`);
+  return (await res.json()).tags as Record<string, string>;
+}
+
+export async function saveTag(instanceId: string, tag: string): Promise<void> {
+  const res = await fetch("/api/tags", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ instanceId, tag }),
+  });
+  if (!res.ok) throw new Error(`Failed to save tag (${res.status})`);
+}
+
 export async function fetchArmor(): Promise<{ armor: ArmorPiece[]; statNames: string[] }> {
   const res = await fetch("/api/armor");
   if (!res.ok) throw new Error(`Failed to load armor (${res.status})`);

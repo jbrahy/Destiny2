@@ -67,6 +67,11 @@ class ActivityBody(BaseModel):
     data: dict
 
 
+class TagBody(BaseModel):
+    instanceId: str
+    tag: str  # keep | junk | infuse | favorite | "" (clears)
+
+
 def recommendation_to_dict(rec, manifest: Manifest) -> dict:
     return {
         "instanceId": rec.weapon.instance_id,
@@ -210,6 +215,7 @@ def weapon_to_dict(weapon, info: dict) -> dict:
         "stats": weapon.stats,
         "ratedPerks": info["rated"],
         "icon": weapon.icon,
+        "equipped": weapon.equipped,
     }
 
 
@@ -255,6 +261,7 @@ def _armor_to_dict(a) -> dict:
         "stats": a.stats,
         "location": a.location,
         "icon": a.icon,
+        "equipped": a.equipped,
     }
 
 
@@ -340,6 +347,34 @@ def get_builds() -> dict:
 @app.put("/api/builds")
 def put_build(body: BuildBody) -> dict:
     save_build(get_conn(get_settings().db_path), body.key, body.data)
+    return {"ok": True}
+
+
+def _ensure_tags(conn) -> None:
+    conn.execute("CREATE TABLE IF NOT EXISTS item_tags (instance_id TEXT PRIMARY KEY, tag TEXT)")
+    conn.commit()
+
+
+@app.get("/api/tags")
+def get_tags() -> dict:
+    conn = get_conn(get_settings().db_path)
+    _ensure_tags(conn)
+    return {"tags": {iid: tag for iid, tag in conn.execute("SELECT instance_id, tag FROM item_tags")}}
+
+
+@app.put("/api/tags")
+def put_tag(body: TagBody) -> dict:
+    conn = get_conn(get_settings().db_path)
+    _ensure_tags(conn)
+    if body.tag:
+        conn.execute(
+            "INSERT INTO item_tags (instance_id, tag) VALUES (?, ?) "
+            "ON CONFLICT(instance_id) DO UPDATE SET tag = excluded.tag",
+            (body.instanceId, body.tag),
+        )
+    else:
+        conn.execute("DELETE FROM item_tags WHERE instance_id = ?", (body.instanceId,))
+    conn.commit()
     return {"ok": True}
 
 

@@ -1,6 +1,7 @@
 import { Verdict, WeaponDto } from "../types";
 import { elementColor } from "../visual";
 import { Icon } from "./Icon";
+import { TagChip } from "./TagSelect";
 
 const BADGE: Record<Verdict, { label: string; color: string }> = {
   god_roll: { label: "God Roll", color: "#2e7d32" },
@@ -10,7 +11,7 @@ const BADGE: Record<Verdict, { label: string; color: string }> = {
   dismantle: { label: "Dismantle", color: "#c62828" },
 };
 
-export function WeaponCard({ w, onClick }: { w: WeaponDto; onClick: () => void }) {
+export function WeaponCard({ w, tag, onClick }: { w: WeaponDto; tag?: string; onClick: () => void }) {
   const badge = BADGE[w.verdict];
   return (
     <div
@@ -27,8 +28,9 @@ export function WeaponCard({ w, onClick }: { w: WeaponDto; onClick: () => void }
           <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {w.name}
           </strong>
-          <span style={{ color: badge.color, fontWeight: 600, whiteSpace: "nowrap" }}>
-            {badge.label}
+          <span style={{ display: "flex", gap: 6, alignItems: "center", whiteSpace: "nowrap" }}>
+            <TagChip tag={tag} />
+            <span style={{ color: badge.color, fontWeight: 600 }}>{badge.label}</span>
           </span>
         </div>
         <div style={{ fontSize: 12, color: "#666", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
@@ -38,6 +40,7 @@ export function WeaponCard({ w, onClick }: { w: WeaponDto; onClick: () => void }
           {w.ammoType && <span>· {w.ammoType}</span>}
           <span>· {w.location}</span>
           {w.isMasterworked && <span>· ★</span>}
+          {w.equipped && <span style={{ color: "#2e7d32", fontWeight: 600 }}>· equipped</span>}
         </div>
         <div style={{ fontSize: 12, color: "#333", marginTop: 2 }}>
           {w.power > 0 && <span style={{ fontWeight: 600 }}>✦ {w.power}</span>}

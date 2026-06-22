@@ -16,9 +16,10 @@ export function Filters({
   return (
     <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
       <input
-        placeholder="Search name…"
+        placeholder="Search… e.g. type:pulse element:void is:masterwork perk:outlaw"
         value={state.search}
         onChange={(e) => onChange({ ...state, search: e.target.value })}
+        style={{ minWidth: 320 }}
       />
       <select
         value={state.verdict}

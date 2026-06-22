@@ -13,3 +13,8 @@ export const ELEMENT_COLOR: Record<string, string> = {
 export function elementColor(element: string): string {
   return ELEMENT_COLOR[element] || ELEMENT_COLOR.Unknown;
 }
+
+export const TAGS = ["keep", "favorite", "infuse", "junk"];
+export const TAG_COLOR: Record<string, string> = {
+  keep: "#2e7d32", favorite: "#8e24aa", infuse: "#1565c0", junk: "#c62828",
+};
