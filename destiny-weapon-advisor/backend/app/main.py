@@ -15,6 +15,7 @@ from app.bungie_client import (
 )
 from app.bungie_client import BungieApiError
 from app.bungie_oauth import build_authorize_url, exchange_code, refresh_tokens
+from app.builds import load_activities, load_builds, save_activity, save_build
 from app.config import get_settings
 from app.manifest import Manifest, load_cached_manifest, load_manifest
 from app.perk_ratings import TIER_SCORE, load_ratings, save_rating
@@ -53,6 +54,16 @@ class PerkRatingBody(BaseModel):
     reason: str = ""
     tags: list[str] = []
     notes: str = ""
+
+
+class BuildBody(BaseModel):
+    key: str
+    data: dict
+
+
+class ActivityBody(BaseModel):
+    name: str
+    data: dict
 
 
 def recommendation_to_dict(rec, manifest: Manifest) -> dict:
@@ -304,6 +315,28 @@ def put_perk(body: PerkRatingBody) -> dict:
         conn, body.name, body.weaponType, body.rating, body.reason, body.tags, body.notes
     )
     _recompute_from_cache(conn)
+    return {"ok": True}
+
+
+@app.get("/api/builds")
+def get_builds() -> dict:
+    return {"builds": load_builds(get_conn(get_settings().db_path))}
+
+
+@app.put("/api/builds")
+def put_build(body: BuildBody) -> dict:
+    save_build(get_conn(get_settings().db_path), body.key, body.data)
+    return {"ok": True}
+
+
+@app.get("/api/activities")
+def get_activities() -> dict:
+    return {"activities": load_activities(get_conn(get_settings().db_path))}
+
+
+@app.put("/api/activities")
+def put_activity(body: ActivityBody) -> dict:
+    save_activity(get_conn(get_settings().db_path), body.name, body.data)
     return {"ok": True}
 
 

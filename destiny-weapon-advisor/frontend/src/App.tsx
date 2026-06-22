@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchStatus } from "./api";
+import { ActivitiesPage } from "./components/ActivitiesPage";
 import { ArmorList } from "./components/ArmorList";
 import { BuildsPage } from "./components/BuildsPage";
 import { Login } from "./components/Login";
@@ -31,6 +32,7 @@ export default function App() {
         {section === "perks" && <PerksPage />}
         {section === "armor" && <ArmorList />}
         {section === "builds" && <BuildsPage />}
+        {section === "activities" && <ActivitiesPage />}
       </div>
     </div>
   );
