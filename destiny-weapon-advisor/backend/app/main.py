@@ -27,7 +27,7 @@ from scripts.migrate import apply_migrations
 from app.auth import router as auth_router, get_current_user
 from app.bungie_session import valid_access_token
 from app.bungie_throttle import Throttle
-from app.repositories import cache, perk_ratings as perk_ratings_repo, builds as builds_repo
+from app.repositories import cache, perk_ratings as perk_ratings_repo, builds as builds_repo, user_tables
 
 
 @asynccontextmanager
@@ -360,31 +360,23 @@ async def put_build(
     return {"ok": True}
 
 
-def _ensure_tags(conn) -> None:
-    conn.execute("CREATE TABLE IF NOT EXISTS item_tags (instance_id TEXT PRIMARY KEY, tag TEXT)")
-    conn.commit()
-
-
 @app.get("/api/tags")
-def get_tags() -> dict:
-    conn = get_conn(get_settings().db_path)
-    _ensure_tags(conn)
-    return {"tags": {iid: tag for iid, tag in conn.execute("SELECT instance_id, tag FROM item_tags")}}
+async def get_tags(
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    return {"tags": await user_tables.get_tags(pool, uid)}
 
 
 @app.put("/api/tags")
-def put_tag(body: TagBody) -> dict:
-    conn = get_conn(get_settings().db_path)
-    _ensure_tags(conn)
-    if body.tag:
-        conn.execute(
-            "INSERT INTO item_tags (instance_id, tag) VALUES (?, ?) "
-            "ON CONFLICT(instance_id) DO UPDATE SET tag = excluded.tag",
-            (body.instanceId, body.tag),
-        )
-    else:
-        conn.execute("DELETE FROM item_tags WHERE instance_id = ?", (body.instanceId,))
-    conn.commit()
+async def put_tag(
+    body: TagBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    await user_tables.set_tag(pool, uid, body.instanceId, body.tag)
     return {"ok": True}
 
 
