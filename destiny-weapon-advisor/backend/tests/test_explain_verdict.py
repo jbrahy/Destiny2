@@ -33,6 +33,7 @@ def test_good_path_mentions_second_strong_perk_and_reroll_for_random():
     assert "B-tier" in reason and "Outlaw" in reason
     assert upgrade.startswith("A second A/S-tier perk")
     assert "re-roll/craft" in upgrade
+    assert "→ Masterwork → God Roll" in upgrade
 
 
 def test_good_path_no_reroll_suffix_for_fixed_roll():

@@ -25,7 +25,7 @@ def explain_verdict(
             "no S-tier and fewer than two A/S perks."
             if best else "No S-tier and fewer than two A/S perks."
         )
-        return reason, f"A second A/S-tier perk (or one S-tier perk) → Upgrade{reroll}"
+        return reason, f"A second A/S-tier perk (or one S-tier perk) → Masterwork → God Roll{reroll}"
     if verdict == Verdict.NO_DATA:
         if not rated:
             return ("No perk-rating data for this weapon's perks.",
