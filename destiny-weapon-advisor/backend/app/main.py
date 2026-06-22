@@ -22,7 +22,6 @@ from app.perk_ratings import TIER_SCORE
 from app.perk_scoring import score_by_perks
 from app.recommend import element_for_subclass, recommend_weapons
 from app.loadout_builder import build_loadout
-from app.storage import get_conn, kv_get, kv_set
 from scripts.migrate import apply_migrations
 from app.auth import router as auth_router, get_current_user, require_csrf
 from app.bungie_session import valid_access_token
@@ -720,133 +719,132 @@ async def pull_postmaster(
     return {"ok": True}
 
 
-def _ensure_loadouts(conn) -> None:
-    conn.execute("CREATE TABLE IF NOT EXISTS loadouts (name TEXT PRIMARY KEY, data TEXT)")
-    conn.commit()
-
-
 @app.get("/api/loadouts")
-def get_loadouts() -> dict:
-    conn = get_conn(get_settings().db_path)
-    _ensure_loadouts(conn)
-    out = []
-    for name, data in conn.execute("SELECT name, data FROM loadouts"):
-        d = json.loads(data)
-        d["name"] = name
-        out.append(d)
-    return {"loadouts": out}
+async def get_loadouts(
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    return {"loadouts": await user_tables.get_loadouts(pool, uid)}
 
 
 @app.put("/api/loadouts")
-def put_loadout(body: LoadoutBody) -> dict:
-    conn = get_conn(get_settings().db_path)
-    _ensure_loadouts(conn)
-    data = json.dumps({"characterId": body.characterId, "items": body.items})
-    conn.execute(
-        "INSERT INTO loadouts (name, data) VALUES (?, ?) "
-        "ON CONFLICT(name) DO UPDATE SET data = excluded.data",
-        (body.name, data),
-    )
-    conn.commit()
+async def put_loadout(
+    body: LoadoutBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+    _csrf=Depends(require_csrf),
+) -> dict:
+    uid = current_user["user_id"]
+    await user_tables.save_loadout(pool, uid, body.name, {"characterId": body.characterId, "items": body.items})
     return {"ok": True}
 
 
 @app.delete("/api/loadouts/{name}")
-def delete_loadout(name: str) -> dict:
-    conn = get_conn(get_settings().db_path)
-    _ensure_loadouts(conn)
-    conn.execute("DELETE FROM loadouts WHERE name = ?", (name,))
-    conn.commit()
+async def delete_loadout(
+    name: str,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+    _csrf=Depends(require_csrf),
+) -> dict:
+    uid = current_user["user_id"]
+    await user_tables.delete_loadout(pool, uid, name)
     return {"ok": True}
 
 
-def _ensure_armor_sets(conn) -> None:
-    conn.execute("CREATE TABLE IF NOT EXISTS armor_sets (name TEXT PRIMARY KEY, data TEXT)")
-    conn.commit()
-
-
 @app.get("/api/armor-sets")
-def get_armor_sets() -> dict:
-    conn = get_conn(get_settings().db_path)
-    _ensure_armor_sets(conn)
-    out = []
-    for name, data in conn.execute("SELECT name, data FROM armor_sets"):
-        out.append({"name": name, **json.loads(data)})
-    return {"armorSets": out}
+async def get_armor_sets(
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    return {"armorSets": await user_tables.get_armor_sets(pool, uid)}
 
 
 @app.put("/api/armor-sets")
-def put_armor_set(body: ArmorSetBody) -> dict:
-    conn = get_conn(get_settings().db_path)
-    _ensure_armor_sets(conn)
-    data = json.dumps({
+async def put_armor_set(
+    body: ArmorSetBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+    _csrf=Depends(require_csrf),
+) -> dict:
+    uid = current_user["user_id"]
+    await user_tables.save_armor_set(pool, uid, body.name, {
         "className": body.className,
         "characterId": body.characterId,
         "tier": body.tier,
         "items": body.items,
     })
-    conn.execute(
-        "INSERT INTO armor_sets (name, data) VALUES (?, ?) "
-        "ON CONFLICT(name) DO UPDATE SET data = excluded.data",
-        (body.name, data),
-    )
-    conn.commit()
     return {"ok": True}
 
 
 @app.delete("/api/armor-sets/{name}")
-def delete_armor_set(name: str) -> dict:
-    conn = get_conn(get_settings().db_path)
-    _ensure_armor_sets(conn)
-    conn.execute("DELETE FROM armor_sets WHERE name = ?", (name,))
-    conn.commit()
+async def delete_armor_set(
+    name: str,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+    _csrf=Depends(require_csrf),
+) -> dict:
+    uid = current_user["user_id"]
+    await user_tables.delete_armor_set(pool, uid, name)
     return {"ok": True}
 
 
-@app.post("/api/armor-sets/apply")
-async def apply_armor_set(body: ApplyLoadoutBody) -> dict:
-    settings = get_settings()
-    conn = get_conn(settings.db_path)
-    _ensure_armor_sets(conn)
-    row = conn.execute("SELECT data FROM armor_sets WHERE name = ?", (body.name,)).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Armor set not found.")
-    armor_set = json.loads(row[0])
-    results = await _apply_item_set(conn, settings, armor_set["items"], armor_set["characterId"])
-    return {"results": results}
-
-
-async def _apply_item_set(conn, settings, items: list[dict], target: str) -> list[dict]:
+async def _apply_item_set(pool, uid: int, settings, request: Request, items: list[dict], target: str) -> list[dict]:
     """Move+equip each {instanceId, itemHash} item to the target character.
     Returns per-item results. Shared by loadout-apply and armor-set-apply."""
-    profile = _load_profile_or_400(conn)
+    profile = await _load_profile_or_400(pool, uid)
     results = []
+    throttle = request.app.state.throttle
     async with httpx.AsyncClient(
         timeout=180.0, headers={"X-API-Key": settings.bungie_api_key}
     ) as client:
-        access, mtype, mid = await _valid_access_token(settings, conn, client)
+        access, mtype, mid = await valid_access_token(pool, uid, settings, client, settings.token_enc_key)
         for it in items:
             try:
                 await _move_one(client, settings, access, mtype, profile, it["instanceId"],
-                                it["itemHash"], target, True)
+                                it["itemHash"], target, True, throttle=throttle)
                 results.append({"instanceId": it["instanceId"], "ok": True})
             except (BungieApiError, httpx.HTTPStatusError) as exc:
                 results.append({"instanceId": it["instanceId"], "ok": False, "error": str(exc)})
-        fresh = await get_profile(mtype, mid, access, settings, client)
-    _save_profile(conn, fresh, mid)
+        fresh = await throttle.run(lambda: get_profile(mtype, mid, access, settings, client))
+    await _save_profile(pool, uid, fresh, mid)
     return results
 
 
-@app.post("/api/loadouts/apply")
-async def apply_loadout(body: ApplyLoadoutBody) -> dict:
+@app.post("/api/armor-sets/apply")
+async def apply_armor_set(
+    request: Request,
+    body: ApplyLoadoutBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+    _csrf=Depends(require_csrf),
+) -> dict:
     settings = get_settings()
-    conn = get_conn(settings.db_path)
-    _ensure_loadouts(conn)
-    row = conn.execute("SELECT data FROM loadouts WHERE name = ?", (body.name,)).fetchone()
-    if not row:
+    uid = current_user["user_id"]
+    sets = await user_tables.get_armor_sets(pool, uid)
+    armor_set = next((s for s in sets if s["name"] == body.name), None)
+    if armor_set is None:
+        raise HTTPException(status_code=404, detail="Armor set not found.")
+    results = await _apply_item_set(pool, uid, settings, request, armor_set["items"], armor_set["characterId"])
+    return {"results": results}
+
+
+@app.post("/api/loadouts/apply")
+async def apply_loadout(
+    request: Request,
+    body: ApplyLoadoutBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+    _csrf=Depends(require_csrf),
+) -> dict:
+    settings = get_settings()
+    uid = current_user["user_id"]
+    loadouts = await user_tables.get_loadouts(pool, uid)
+    loadout = next((lo for lo in loadouts if lo["name"] == body.name), None)
+    if loadout is None:
         raise HTTPException(status_code=404, detail="Loadout not found.")
-    loadout = json.loads(row[0])
-    results = await _apply_item_set(conn, settings, loadout["items"], loadout["characterId"])
+    results = await _apply_item_set(pool, uid, settings, request, loadout["items"], loadout["characterId"])
     return {"results": results}
 
 
