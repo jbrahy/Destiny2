@@ -198,6 +198,21 @@ async def equip_item(
     _raise_for_bungie(resp)
 
 
+async def pull_from_postmaster(
+    membership_type: int, item_hash: int, instance_id: str, character_id: str,
+    stack_size: int, access_token: str, settings: Settings, client: httpx.AsyncClient,
+) -> None:
+    resp = await client.post(
+        f"{_BASE}/Destiny2/Actions/Items/PullFromPostmaster/",
+        json={
+            "itemReferenceHash": item_hash, "itemId": instance_id, "stackSize": stack_size,
+            "characterId": character_id, "membershipType": membership_type,
+        },
+        headers=_headers(settings, access_token),
+    )
+    _raise_for_bungie(resp)
+
+
 async def get_memberships(access_token: str, settings: Settings, client: httpx.AsyncClient) -> dict:
     resp = await client.get(
         f"{_BASE}/User/GetMembershipsForCurrentUser/",

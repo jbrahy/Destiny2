@@ -1,5 +1,6 @@
 import {
-  ActivityRec, ArmorPiece, Build, Character, Membership, WeaponDto, WeaponTypePerks,
+  ActivityRec, ArmorPiece, Build, Character, Loadout, LoadoutItem, Membership, MoveResult,
+  PostmasterItem, WeaponDto, WeaponTypePerks,
 } from "./types";
 
 export const loginUrl = "/api/login";
@@ -124,5 +125,71 @@ export async function moveItem(body: {
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
     throw new Error(data.detail || `Move failed (${res.status})`);
+  }
+}
+
+export async function bulkMove(
+  items: LoadoutItem[], targetCharacterId: string, equip: boolean,
+): Promise<MoveResult[]> {
+  const res = await fetch("/api/transfer/bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items, targetCharacterId, equip }),
+  });
+  if (!res.ok) throw new Error(`Bulk move failed (${res.status})`);
+  return (await res.json()).results as MoveResult[];
+}
+
+export async function fetchLoadouts(): Promise<Loadout[]> {
+  const res = await fetch("/api/loadouts");
+  if (!res.ok) throw new Error(`Failed to load loadouts (${res.status})`);
+  return (await res.json()).loadouts as Loadout[];
+}
+
+export async function saveLoadout(name: string, characterId: string, items: LoadoutItem[]): Promise<void> {
+  const res = await fetch("/api/loadouts", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, characterId, items }),
+  });
+  if (!res.ok) throw new Error(`Failed to save loadout (${res.status})`);
+}
+
+export async function deleteLoadout(name: string): Promise<void> {
+  const res = await fetch(`/api/loadouts/${encodeURIComponent(name)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Failed to delete loadout (${res.status})`);
+}
+
+export async function applyLoadout(name: string): Promise<MoveResult[]> {
+  const res = await fetch("/api/loadouts/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(data.detail || `Apply failed (${res.status})`);
+  }
+  return (await res.json()).results as MoveResult[];
+}
+
+export async function fetchPostmaster(): Promise<PostmasterItem[]> {
+  const res = await fetch("/api/postmaster");
+  if (!res.ok) throw new Error(`Failed to load postmaster (${res.status})`);
+  return (await res.json()).items as PostmasterItem[];
+}
+
+export async function pullPostmaster(item: PostmasterItem): Promise<void> {
+  const res = await fetch("/api/postmaster/pull", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      itemHash: item.itemHash, instanceId: item.instanceId,
+      characterId: item.characterId, stackSize: item.quantity,
+    }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(data.detail || `Pull failed (${res.status})`);
   }
 }

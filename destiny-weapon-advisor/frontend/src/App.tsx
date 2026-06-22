@@ -3,6 +3,7 @@ import { fetchStatus } from "./api";
 import { ActivitiesPage } from "./components/ActivitiesPage";
 import { ArmorList } from "./components/ArmorList";
 import { BuildsPage } from "./components/BuildsPage";
+import { LoadoutsPage } from "./components/LoadoutsPage";
 import { Login } from "./components/Login";
 import { Nav, Section } from "./components/Nav";
 import { PerksPage } from "./components/PerksPage";
@@ -33,6 +34,7 @@ export default function App() {
         {section === "armor" && <ArmorList />}
         {section === "builds" && <BuildsPage />}
         {section === "activities" && <ActivitiesPage />}
+        {section === "loadouts" && <LoadoutsPage />}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchCharacters, fetchTags, fetchWeapons, saveTag } from "../api";
+import { bulkMove, fetchCharacters, fetchTags, fetchWeapons, saveTag } from "../api";
 import { Character, Verdict, WeaponDto } from "../types";
 import { matchWeapon, parseQuery } from "../search";
 import { TAGS } from "../visual";
@@ -34,9 +34,23 @@ export function WeaponGrid() {
     verdict: "all", weaponType: "all", search: "",
   });
 
+  const [bulkBusy, setBulkBusy] = useState(false);
+
   function setTag(instanceId: string, tag: string) {
     setTags((t) => ({ ...t, [instanceId]: tag }));
     saveTag(instanceId, tag).catch(() => {});
+  }
+
+  async function bulkMoveTo(target: string, label: string) {
+    if (shown.length === 0) return;
+    if (!window.confirm(`Move all ${shown.length} shown weapons to ${label}? (equipped items are skipped)`)) return;
+    setBulkBusy(true);
+    try {
+      await bulkMove(shown.map((w) => ({ instanceId: w.instanceId, itemHash: w.itemHash })), target, false);
+      load(false);
+    } finally {
+      setBulkBusy(false);
+    }
   }
 
   function load(refresh: boolean) {
@@ -109,6 +123,18 @@ export function WeaponGrid() {
           );
         })}
       </div>
+      {characters.length > 0 && shown.length > 0 && (
+        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8, fontSize: 13 }}>
+          <span style={{ color: "#666" }}>Move all {shown.length} shown to:</span>
+          {characters.map((c) => (
+            <button key={c.id} disabled={bulkBusy} onClick={() => bulkMoveTo(c.id, c.className)}
+              style={{ padding: "2px 8px" }}>{c.className}</button>
+          ))}
+          <button disabled={bulkBusy} onClick={() => bulkMoveTo("vault", "Vault")}
+            style={{ padding: "2px 8px" }}>Vault</button>
+          {bulkBusy && <span style={{ color: "#888" }}>moving…</span>}
+        </div>
+      )}
       <div style={{ marginBottom: 8 }}>
         <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
           <option value="all">All tags</option>

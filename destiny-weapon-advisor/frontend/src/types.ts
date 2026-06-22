@@ -32,6 +32,33 @@ export interface Membership {
   displayName: string;
 }
 
+export interface LoadoutItem {
+  instanceId: string;
+  itemHash: number;
+}
+
+export interface Loadout {
+  name: string;
+  characterId: string;
+  items: LoadoutItem[];
+}
+
+export interface PostmasterItem {
+  instanceId: string;
+  itemHash: number;
+  name: string;
+  icon: string;
+  characterId: string;
+  className: string;
+  quantity: number;
+}
+
+export interface MoveResult {
+  instanceId: string;
+  ok: boolean;
+  error?: string;
+}
+
 export interface Character {
   id: string;
   className: string;
