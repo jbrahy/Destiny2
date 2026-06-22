@@ -24,7 +24,7 @@ from app.recommend import element_for_subclass, recommend_weapons
 from app.loadout_builder import build_loadout
 from app.storage import get_conn, kv_get, kv_set
 from scripts.migrate import apply_migrations
-from app.auth import router as auth_router, get_current_user
+from app.auth import router as auth_router, get_current_user, require_csrf
 from app.bungie_session import valid_access_token
 from app.bungie_throttle import Throttle
 from app.repositories import cache, perk_ratings as perk_ratings_repo, builds as builds_repo, tokens, user_tables
@@ -554,9 +554,12 @@ async def get_characters(
     return {"characters": out}
 
 
-async def _move_one(client, settings, access, mtype, profile, instance_id, item_hash, target, equip):
+async def _move_one(client, settings, access, mtype, profile, instance_id, item_hash, target, equip, throttle=None):
     """Move one item to `target` ('vault' or a character id), optionally equip.
-    Raises BungieApiError on a problem (e.g. equipped on another character)."""
+    Raises BungieApiError on a problem (e.g. equipped on another character).
+    When throttle is provided, all Bungie calls are routed through it."""
+    _run = throttle.run if throttle is not None else (lambda f: f())
+
     source = _find_item_location(profile, instance_id)
     if source is None:
         raise BungieApiError("Item not found in your cached inventory.")
@@ -566,14 +569,14 @@ async def _move_one(client, settings, access, mtype, profile, instance_id, item_
         raise BungieApiError("Item is equipped on another character — unequip it first.")
     if target == "vault":
         if source != "vault":
-            await transfer_item(mtype, item_hash, instance_id, source, True, access, settings, client)
+            await _run(lambda: transfer_item(mtype, item_hash, instance_id, source, True, access, settings, client))
         return
     if source != target:
         if source != "vault":
-            await transfer_item(mtype, item_hash, instance_id, source, True, access, settings, client)
-        await transfer_item(mtype, item_hash, instance_id, target, False, access, settings, client)
+            await _run(lambda: transfer_item(mtype, item_hash, instance_id, source, True, access, settings, client))
+        await _run(lambda: transfer_item(mtype, item_hash, instance_id, target, False, access, settings, client))
     if equip:
-        await equip_item(mtype, instance_id, target, access, settings, client)
+        await _run(lambda: equip_item(mtype, instance_id, target, access, settings, client))
 
 
 async def _save_profile(pool, uid: int, fresh: dict, mid: str) -> None:
@@ -593,53 +596,69 @@ async def _load_profile_or_400(pool, uid: int) -> dict:
 
 
 @app.post("/api/transfer")
-async def transfer(body: TransferBody) -> dict:
+async def transfer(
+    request: Request,
+    body: TransferBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+    _csrf=Depends(require_csrf),
+) -> dict:
     settings = get_settings()
-    conn = get_conn(settings.db_path)
-    profile = _load_profile_or_400(conn)
+    uid = current_user["user_id"]
+    profile = await _load_profile_or_400(pool, uid)
+    throttle = request.app.state.throttle
     async with httpx.AsyncClient(
         timeout=60.0, headers={"X-API-Key": settings.bungie_api_key}
     ) as client:
-        access, mtype, mid = await _valid_access_token(settings, conn, client)
-        if kv_get(conn, "profile_membership_id") != mid:
+        access, mtype, mid = await valid_access_token(pool, uid, settings, client, settings.token_enc_key)
+        cached_mid = await cache.get(pool, uid, "profile_membership_id")
+        if cached_mid != mid:
             raise HTTPException(status_code=400, detail="Your cached inventory is for a different "
                                 "account — open Weapons and Refresh, then try the move again.")
         try:
             await _move_one(client, settings, access, mtype, profile, body.instanceId,
-                            body.itemHash, body.targetCharacterId, body.equip)
+                            body.itemHash, body.targetCharacterId, body.equip, throttle)
         except BungieApiError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         except httpx.HTTPStatusError as exc:
             raise HTTPException(status_code=400, detail=f"Bungie rejected the move (HTTP "
                                 f"{exc.response.status_code}). If you haven't re-logged-in since "
                                 "adding the move permission, click Re-login and try again.")
-        fresh = await get_profile(mtype, mid, access, settings, client)
-    _save_profile(conn, fresh, mid)
+        fresh = await throttle.run(lambda: get_profile(mtype, mid, access, settings, client))
+    await _save_profile(pool, uid, fresh, mid)
     return {"ok": True}
 
 
 @app.post("/api/transfer/bulk")
-async def transfer_bulk(body: BulkTransferBody) -> dict:
+async def transfer_bulk(
+    request: Request,
+    body: BulkTransferBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+    _csrf=Depends(require_csrf),
+) -> dict:
     settings = get_settings()
-    conn = get_conn(settings.db_path)
-    profile = _load_profile_or_400(conn)
+    uid = current_user["user_id"]
+    profile = await _load_profile_or_400(pool, uid)
+    throttle = request.app.state.throttle
     results = []
     async with httpx.AsyncClient(
         timeout=180.0, headers={"X-API-Key": settings.bungie_api_key}
     ) as client:
-        access, mtype, mid = await _valid_access_token(settings, conn, client)
-        if kv_get(conn, "profile_membership_id") != mid:
+        access, mtype, mid = await valid_access_token(pool, uid, settings, client, settings.token_enc_key)
+        cached_mid = await cache.get(pool, uid, "profile_membership_id")
+        if cached_mid != mid:
             raise HTTPException(status_code=400, detail="Cached inventory is for a different "
                                 "account — Refresh first.")
         for it in body.items:
             try:
                 await _move_one(client, settings, access, mtype, profile, it["instanceId"],
-                                it["itemHash"], body.targetCharacterId, body.equip)
+                                it["itemHash"], body.targetCharacterId, body.equip, throttle)
                 results.append({"instanceId": it["instanceId"], "ok": True})
             except (BungieApiError, httpx.HTTPStatusError) as exc:
                 results.append({"instanceId": it["instanceId"], "ok": False, "error": str(exc)})
-        fresh = await get_profile(mtype, mid, access, settings, client)
-    _save_profile(conn, fresh, mid)
+        fresh = await throttle.run(lambda: get_profile(mtype, mid, access, settings, client))
+    await _save_profile(pool, uid, fresh, mid)
     return {"results": results}
 
 
@@ -647,10 +666,13 @@ _POSTMASTER_BUCKET = 215593132
 
 
 @app.get("/api/postmaster")
-def get_postmaster() -> dict:
-    conn = get_conn(get_settings().db_path)
-    profile_raw = kv_get(conn, "profile_cache")
-    manifest = load_cached_manifest(conn)
+async def get_postmaster(
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    profile_raw = await cache.get(pool, uid, "profile_cache")
+    manifest = await load_cached_manifest(pool)
     if not profile_raw or manifest is None:
         return {"items": []}
     profile = json.loads(profile_raw)
@@ -673,20 +695,28 @@ def get_postmaster() -> dict:
 
 
 @app.post("/api/postmaster/pull")
-async def pull_postmaster(body: PullPostmasterBody) -> dict:
+async def pull_postmaster(
+    request: Request,
+    body: PullPostmasterBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+    _csrf=Depends(require_csrf),
+) -> dict:
     settings = get_settings()
-    conn = get_conn(settings.db_path)
+    uid = current_user["user_id"]
+    throttle = request.app.state.throttle
     async with httpx.AsyncClient(
         timeout=60.0, headers={"X-API-Key": settings.bungie_api_key}
     ) as client:
-        access, mtype, mid = await _valid_access_token(settings, conn, client)
+        access, mtype, mid = await valid_access_token(pool, uid, settings, client, settings.token_enc_key)
         try:
-            await pull_from_postmaster(mtype, body.itemHash, body.instanceId, body.characterId,
-                                       body.stackSize, access, settings, client)
+            await throttle.run(lambda: pull_from_postmaster(mtype, body.itemHash, body.instanceId,
+                                                             body.characterId, body.stackSize,
+                                                             access, settings, client))
         except (BungieApiError, httpx.HTTPStatusError) as exc:
             raise HTTPException(status_code=400, detail=str(exc))
-        fresh = await get_profile(mtype, mid, access, settings, client)
-    _save_profile(conn, fresh, mid)
+        fresh = await throttle.run(lambda: get_profile(mtype, mid, access, settings, client))
+    await _save_profile(pool, uid, fresh, mid)
     return {"ok": True}
 
 

@@ -35,6 +35,32 @@ async def test_callback_creates_session_and_status_true(app_client, monkeypatch,
     assert s.json()["authenticated"] is True
 
 
+async def test_callback_sets_csrf_cookie(app_client, monkeypatch, clean_db):
+    """Callback must set csrftoken cookie (httponly=False so JS can read it)."""
+    import app.auth as auth
+    loc = (await app_client.get("/api/login", follow_redirects=False)).headers["location"]
+    state = loc.split("state=")[1].split("&")[0]
+
+    async def fake_exchange(code, settings, client):
+        return {"access_token": "a2", "refresh_token": "r2", "expires_in": 3600}
+
+    async def fake_members(access, settings, client):
+        return {
+            "primaryMembershipId": "mid-csrf1",
+            "destinyMemberships": [
+                {"membershipType": 3, "membershipId": "mid-csrf1", "displayName": "CsrfUser"}
+            ],
+        }
+
+    monkeypatch.setattr(auth, "exchange_code", fake_exchange)
+    monkeypatch.setattr(auth, "get_memberships", fake_members)
+    await app_client.get(f"/callback?code=x&state={state}", follow_redirects=False)
+
+    # csrftoken must be set in the cookie jar after login
+    csrf = app_client.cookies.get("csrftoken")
+    assert csrf is not None and len(csrf) > 0
+
+
 async def test_protected_route_401_without_session(app_client):
     # Use a fresh client with no cookies by creating an independent request
     from httpx import AsyncClient, ASGITransport

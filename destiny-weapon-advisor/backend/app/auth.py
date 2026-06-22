@@ -16,6 +16,18 @@ from app.repositories import sessions, tokens, users
 router = APIRouter()
 
 
+def require_csrf(request: Request) -> None:
+    """FastAPI dependency: enforce CSRF double-submit cookie check.
+
+    Reads X-CSRF-Token header and csrftoken cookie; raises 403 if either is
+    absent or they do not match.  No server-side state required.
+    """
+    header_token = request.headers.get("X-CSRF-Token")
+    cookie_token = request.cookies.get("csrftoken")
+    if not header_token or not cookie_token or header_token != cookie_token:
+        raise HTTPException(status_code=403, detail="CSRF check failed")
+
+
 async def _pick_membership(memberships: dict, access: str, settings, client) -> dict:
     """Choose which Destiny account to use: the cross-save primary if set,
     otherwise the account whose most-recently-played character is the newest."""
@@ -100,12 +112,24 @@ async def callback(code: str, state: str, pool=Depends(get_pool)) -> RedirectRes
     # Create session
     raw = await sessions.create(pool, user_id, settings.session_ttl_days)
 
-    # Build redirect response with session cookie
+    # Generate CSRF token for double-submit cookie pattern
+    csrf = secrets.token_urlsafe(32)
+
+    # Build redirect response with session + CSRF cookies
     response = RedirectResponse(settings.frontend_url, status_code=307)
     response.set_cookie(
         key="sid",
         value=raw,
         httponly=True,
+        samesite="lax",
+        secure=settings.cookie_secure,
+        path="/",
+        max_age=settings.session_ttl_days * 86400,
+    )
+    response.set_cookie(
+        key="csrftoken",
+        value=csrf,
+        httponly=False,   # JS must read this to send it as a header
         samesite="lax",
         secure=settings.cookie_secure,
         path="/",
@@ -121,6 +145,7 @@ async def logout(request: Request, pool=Depends(get_pool)) -> dict:
         await sessions.delete(pool, sid)
     response = JSONResponse({"ok": True})
     response.delete_cookie(key="sid", path="/")
+    response.delete_cookie(key="csrftoken", path="/")
     return response
 
 
