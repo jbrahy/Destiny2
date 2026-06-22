@@ -391,6 +391,44 @@ def put_activity(body: ActivityBody) -> dict:
     return {"ok": True}
 
 
+# Activity types worth surfacing for build/loadout planning.
+_ACTIVITY_TYPE_KEEP = {"raid", "dungeon", "nightfall", "exotic mission", "story"}
+
+
+@app.get("/api/activities/catalog")
+async def activities_catalog() -> dict:
+    """Distinct build-relevant activity names pulled from the Destiny manifest
+    (raids/dungeons/nightfalls/etc.), cached locally after the first fetch."""
+    settings = get_settings()
+    conn = get_conn(settings.db_path)
+    cached = kv_get(conn, "activity_catalog")
+    if cached:
+        return {"catalog": json.loads(cached)}
+    async with httpx.AsyncClient(
+        timeout=120.0, headers={"X-API-Key": settings.bungie_api_key}
+    ) as client:
+        meta = await client.get("https://www.bungie.net/Platform/Destiny2/Manifest/")
+        meta.raise_for_status()
+        paths = meta.json()["Response"]["jsonWorldComponentContentPaths"]["en"]
+        adefs = (await client.get(
+            "https://www.bungie.net" + paths["DestinyActivityDefinition"], timeout=120.0)).json()
+        atypes = (await client.get(
+            "https://www.bungie.net" + paths["DestinyActivityTypeDefinition"], timeout=60.0)).json()
+    type_name = {int(k): v.get("displayProperties", {}).get("name", "") for k, v in atypes.items()}
+    seen: dict[str, str] = {}
+    for a in adefs.values():
+        name = a.get("displayProperties", {}).get("name", "")
+        tname = type_name.get(a.get("activityTypeHash"), "")
+        if name and tname.lower() in _ACTIVITY_TYPE_KEEP and name not in seen:
+            seen[name] = tname
+    catalog = sorted(
+        ({"name": n, "type": t} for n, t in seen.items()),
+        key=lambda x: (x["type"], x["name"]),
+    )
+    kv_set(conn, "activity_catalog", json.dumps(catalog))
+    return {"catalog": catalog}
+
+
 @app.get("/api/armor")
 def get_armor() -> dict:
     conn = get_conn(get_settings().db_path)
