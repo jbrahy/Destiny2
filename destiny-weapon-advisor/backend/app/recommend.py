@@ -2,7 +2,7 @@ from app.models import Verdict
 
 _VERDICT_TIER = {
     Verdict.GOD_ROLL.value: 5,
-    Verdict.UPGRADE.value: 4,
+    Verdict.MASTERWORK.value: 4,
     Verdict.GOOD.value: 3,
     Verdict.NO_DATA.value: 1,
     Verdict.DISMANTLE.value: 0,
@@ -10,7 +10,7 @@ _VERDICT_TIER = {
 
 _VERDICT_REASON = {
     Verdict.GOD_ROLL.value: "God roll",
-    Verdict.UPGRADE.value: "Strong roll",
+    Verdict.MASTERWORK.value: "Strong roll",
     Verdict.GOOD.value: "Good roll",
     Verdict.NO_DATA.value: "Usable",
 }

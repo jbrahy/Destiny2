@@ -18,7 +18,7 @@ def test_god_roll_reason_and_no_upgrade_path():
 
 def test_upgrade_path_is_masterwork():
     reason, upgrade = explain_verdict(
-        Verdict.UPGRADE, _rated(("Frenzy", "S"), ("Killing Wind", "A")),
+        Verdict.MASTERWORK, _rated(("Frenzy", "S"), ("Killing Wind", "A")),
         is_masterworked=False, is_random_roll=True, dupe_demoted=False,
     )
     assert "not masterworked" in reason

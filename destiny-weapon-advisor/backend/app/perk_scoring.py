@@ -14,7 +14,7 @@ def explain_verdict(
     if verdict == Verdict.GOD_ROLL:
         names = ", ".join(strong) or "strong perks"
         return f"Top-tier perks ({names}) and masterworked.", None
-    if verdict == Verdict.UPGRADE:
+    if verdict == Verdict.MASTERWORK:
         names = ", ".join(strong) or "strong perks"
         return (f"{len(strong)} A/S-tier perk(s) ({names}) but not masterworked.",
                 "Masterwork it → God Roll.")
@@ -58,7 +58,7 @@ def score_weapon(weapon: OwnedWeapon, ratings: PerkRatings):
     strong = sum(1 for s in scores if s >= 4)  # A or S
 
     if best >= 5 or strong >= 2:
-        verdict = Verdict.GOD_ROLL if weapon.is_masterworked else Verdict.UPGRADE
+        verdict = Verdict.GOD_ROLL if weapon.is_masterworked else Verdict.MASTERWORK
     elif best >= 3:  # at least one A or B perk
         verdict = Verdict.GOOD
     elif best == 2:  # only C-tier perks
@@ -87,7 +87,7 @@ def score_by_perks(weapons: list[OwnedWeapon], ratings: PerkRatings) -> list[dic
         )
 
     # Demote unremarkable random-roll dupes to DISMANTLE when a better copy exists.
-    keepers = {Verdict.GOD_ROLL, Verdict.UPGRADE, Verdict.GOOD}
+    keepers = {Verdict.GOD_ROLL, Verdict.MASTERWORK, Verdict.GOOD}
     has_keeper = {r["weapon"].item_hash for r in results if r["verdict"] in keepers}
     for r in results:
         if (

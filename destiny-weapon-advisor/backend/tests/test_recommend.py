@@ -31,7 +31,7 @@ def test_groups_by_ammo_slot():
 
 def test_orders_by_verdict_tier():
     weapons = [_w(name="good", verdict="good"), _w(name="god", verdict="god_roll"),
-               _w(name="upg", verdict="upgrade")]
+               _w(name="upg", verdict="masterwork")]
     out = recommend_weapons(weapons, GENERAL)
     assert [w["name"] for w in out["slots"]["Primary"]] == ["god", "upg", "good"]
 
@@ -63,16 +63,16 @@ def test_activity_element_bonus_promotes_matching_weapon():
 def test_element_bonus_ties_one_tier_up_then_tiebreakers():
     activity = {"label": "Raid", "element": "Solar"}
     # Element bonus is +1, exactly one verdict tier.
-    # matched "good" (3+1=4) ties unmatched "upgrade" (4).
+    # matched "good" (3+1=4) ties unmatched "masterwork" (4).
     # Tiebreaker: masterwork.
     weapons = [_w(name="matched_good_mw", verdict="good", element="Solar", isMasterworked=True),
-               _w(name="unmatched_upgrade", verdict="upgrade", element="Void", isMasterworked=False)]
+               _w(name="unmatched_upgrade", verdict="masterwork", element="Void", isMasterworked=False)]
     out = recommend_weapons(weapons, activity)
     assert [w["name"] for w in out["slots"]["Primary"]] == ["matched_good_mw", "unmatched_upgrade"]
 
-    # Reverse: unmatched upgrade with masterwork should beat matched good without.
+    # Reverse: unmatched masterwork with masterwork should beat matched good without.
     weapons = [_w(name="matched_good", verdict="good", element="Solar", isMasterworked=False),
-               _w(name="unmatched_upgrade_mw", verdict="upgrade", element="Void", isMasterworked=True)]
+               _w(name="unmatched_upgrade_mw", verdict="masterwork", element="Void", isMasterworked=True)]
     out = recommend_weapons(weapons, activity)
     assert [w["name"] for w in out["slots"]["Primary"]] == ["unmatched_upgrade_mw", "matched_good"]
 

@@ -33,9 +33,9 @@ def test_s_tier_masterworked_is_god_roll():
     assert r["verdict"] == Verdict.GOD_ROLL
 
 
-def test_s_tier_not_masterworked_is_upgrade():
+def test_s_tier_not_masterworked_is_masterwork():
     r = score_by_perks([weapon(["Incandescent"], mw=False)], ratings(SEED))[0]
-    assert r["verdict"] == Verdict.UPGRADE
+    assert r["verdict"] == Verdict.MASTERWORK
 
 
 def test_two_a_perks_is_god_roll_when_masterworked():
