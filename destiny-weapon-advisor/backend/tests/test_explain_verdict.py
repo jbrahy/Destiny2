@@ -18,7 +18,7 @@ def test_god_roll_reason_and_no_upgrade_path():
 
 def test_upgrade_path_is_masterwork():
     reason, upgrade = explain_verdict(
-        Verdict.UPGRADE, _rated(("Frenzy", "S"), ("Killing Wind", "A")),
+        Verdict.MASTERWORK, _rated(("Frenzy", "S"), ("Killing Wind", "A")),
         is_masterworked=False, is_random_roll=True, dupe_demoted=False,
     )
     assert "not masterworked" in reason
@@ -33,6 +33,7 @@ def test_good_path_mentions_second_strong_perk_and_reroll_for_random():
     assert "B-tier" in reason and "Outlaw" in reason
     assert upgrade.startswith("A second A/S-tier perk")
     assert "re-roll/craft" in upgrade
+    assert "→ Masterwork → God Roll" in upgrade
 
 
 def test_good_path_no_reroll_suffix_for_fixed_roll():

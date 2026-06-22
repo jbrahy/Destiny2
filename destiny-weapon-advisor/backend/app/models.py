@@ -5,7 +5,7 @@ from enum import Enum
 class Verdict(str, Enum):
     GOD_ROLL = "god_roll"
     GOOD = "good"
-    UPGRADE = "upgrade"
+    MASTERWORK = "masterwork"
     NO_DATA = "no_data"
     DISMANTLE = "dismantle"
 

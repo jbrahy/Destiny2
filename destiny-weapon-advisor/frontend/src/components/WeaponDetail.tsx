@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { moveItem } from "../api";
-import { Character, WeaponDto } from "../types";
+import { Character, VERDICT_LABEL, WeaponDto } from "../types";
 import { Icon } from "./Icon";
 import { TagSelect } from "./TagSelect";
 
@@ -103,7 +103,7 @@ export function WeaponDetail({
         </div>
       )}
 
-      <p style={{ margin: "0 0 4px" }}><strong>Verdict:</strong> {w.verdict.replace("_", " ")}</p>
+      <p style={{ margin: "0 0 4px" }}><strong>Verdict:</strong> {VERDICT_LABEL[w.verdict]}</p>
       {w.verdictReason && (
         <p style={{ margin: "0 0 4px", color: "var(--muted)", fontSize: 13 }}>
           {w.verdictReason}

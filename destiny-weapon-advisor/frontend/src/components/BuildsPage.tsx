@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchBuilds, fetchWeapons, saveBuild } from "../api";
-import { Build, WeaponDto } from "../types";
+import { Build, VERDICT_LABEL, WeaponDto } from "../types";
 import { ArmorPage } from "./ArmorPage";
 import { Icon } from "./Icon";
 import { elementColor } from "../visual";
@@ -9,7 +9,7 @@ import { elementColor } from "../visual";
 const SUBCLASS_ELEMENT: Record<string, string> = {
   Solar: "Solar", Arc: "Arc", Void: "Void", Stasis: "Stasis", Strand: "Strand", Prismatic: "",
 };
-const VERDICT_RANK: Record<string, number> = { god_roll: 0, upgrade: 1, good: 2 };
+const VERDICT_RANK: Record<string, number> = { god_roll: 0, masterwork: 1, good: 2 };
 
 const CLASSES = ["Titan", "Hunter", "Warlock"];
 const SUBCLASSES = ["Solar", "Arc", "Void", "Stasis", "Strand", "Prismatic"];
@@ -56,7 +56,7 @@ export function BuildsPage() {
   const bestWeapons = useMemo(() => {
     const el = SUBCLASS_ELEMENT[subclass];
     return weapons
-      .filter((w) => w.verdict === "god_roll" || w.verdict === "upgrade")
+      .filter((w) => w.verdict === "god_roll" || w.verdict === "masterwork")
       .filter((w) => el === "" || w.element === el || w.element === "Kinetic")
       .sort((a, b) =>
         (VERDICT_RANK[a.verdict] ?? 9) - (VERDICT_RANK[b.verdict] ?? 9) || b.power - a.power)
@@ -144,7 +144,7 @@ export function BuildsPage() {
       </h2>
       {bestWeapons.length === 0 ? (
         <p style={{ color: "var(--muted)" }}>
-          No god-roll / upgrade {SUBCLASS_ELEMENT[subclass]} (or Kinetic) weapons found in your
+          No god-roll / masterwork {SUBCLASS_ELEMENT[subclass]} (or Kinetic) weapons found in your
           inventory yet. Load the Weapons tab and rate some perks.
         </p>
       ) : (
@@ -164,7 +164,7 @@ export function BuildsPage() {
                 </strong>
                 <span style={{ fontSize: 12, color: "var(--muted)" }}>
                   {w.weaponType} · <span style={{ color: elementColor(w.element) }}>{w.element}</span>
-                  {" · "}{w.verdict.replace("_", " ")}
+                  {" · "}{VERDICT_LABEL[w.verdict]}
                 </span>
               </div>
             </div>

@@ -1,4 +1,12 @@
-export type Verdict = "god_roll" | "good" | "upgrade" | "no_data" | "dismantle";
+export type Verdict = "god_roll" | "good" | "masterwork" | "no_data" | "dismantle";
+
+export const VERDICT_LABEL: Record<Verdict, string> = {
+  god_roll: "God Roll",
+  masterwork: "Masterwork → God Roll",
+  good: "Good",
+  no_data: "No Data",
+  dismantle: "Dismantle",
+};
 
 export interface ArmorPiece {
   instanceId: string;
