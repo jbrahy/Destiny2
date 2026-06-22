@@ -218,6 +218,8 @@ def weapon_to_dict(weapon, info: dict) -> dict:
         "verdict": info["verdict"].value,
         "matchedPerks": [r["name"] for r in info["rated"] if TIER_SCORE.get(r["rating"], 0) >= 4],
         "note": info["note"],
+        "verdictReason": info.get("verdictReason", ""),
+        "upgradePath": info.get("upgradePath"),
         "tags": info["tags"],
         "isDuplicate": info["is_duplicate"],
         "power": weapon.power,
