@@ -31,10 +31,16 @@ from app.repositories import cache, perk_ratings as perk_ratings_repo, builds as
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    pool = await db.create_pool(get_settings())
+    settings = get_settings()
+    if settings.cookie_secure:
+        if not settings.token_enc_key:
+            raise RuntimeError("token_enc_key must be set in production (cookie_secure=true)")
+        if not settings.session_secret:
+            raise RuntimeError("session_secret must be set in production (cookie_secure=true)")
+    pool = await db.create_pool(settings)
     await apply_migrations(pool)
     app.state.pool = pool
-    app.state.throttle = Throttle(get_settings().bungie_throttle_concurrency)
+    app.state.throttle = Throttle(settings.bungie_throttle_concurrency)
     yield
     pool.close()
     await pool.wait_closed()

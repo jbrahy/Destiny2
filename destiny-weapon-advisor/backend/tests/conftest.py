@@ -99,8 +99,12 @@ async def login_user(app_client, monkeypatch, bungie_id: str = "bm1") -> int:
     async def fake_exchange(code, settings, client):
         return {"access_token": f"acc-{bungie_id}", "refresh_token": f"ref-{bungie_id}", "expires_in": 3600}
 
+    # bnet_id is derived from bungie_id so different bungie_id args → different users.
+    bnet_id = f"bnet-{bungie_id}"
+
     async def fake_members(access, settings, client):
         return {
+            "bungieNetUser": {"membershipId": bnet_id},
             "primaryMembershipId": bungie_id,
             "destinyMemberships": [
                 {"membershipType": 3, "membershipId": bungie_id, "displayName": f"User-{bungie_id}"}
@@ -116,7 +120,8 @@ async def login_user(app_client, monkeypatch, bungie_id: str = "bm1") -> int:
     # The sid cookie is now set on app_client.  Look up the user_id from DB.
     pool = app_client._transport.app.state.pool
     # upsert is idempotent — returns user_id without re-creating anything.
+    # Use bnet_id (the stable Bungie.net account id) to match what the callback stores.
     uid = await users_repo.upsert(
-        pool, bungie_id, f"User-{bungie_id}", 3, bungie_id
+        pool, bnet_id, f"User-{bungie_id}", 3, bungie_id
     )
     return uid

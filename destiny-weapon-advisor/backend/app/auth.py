@@ -32,6 +32,8 @@ async def _pick_membership(memberships: dict, access: str, settings, client) -> 
     """Choose which Destiny account to use: the cross-save primary if set,
     otherwise the account whose most-recently-played character is the newest."""
     destiny_memberships = memberships["destinyMemberships"]
+    if not destiny_memberships:
+        raise HTTPException(status_code=400, detail="No Destiny memberships found for this Bungie account.")
     primary_id = memberships.get("primaryMembershipId")
     primary = next((m for m in destiny_memberships if m.get("membershipId") == primary_id), None)
     if primary is not None:
@@ -87,12 +89,13 @@ async def callback(code: str, state: str, pool=Depends(get_pool)) -> RedirectRes
         memberships = await get_memberships(access, settings, client)
         primary = await _pick_membership(memberships, access, settings, client)
 
-    # Upsert user
-    bungie_mid = primary.get("membershipId", "")
+    # Upsert user — use the stable Bungie.net account id (bungieNetUser.membershipId)
+    # as the primary key, not the Destiny platform membershipId which can change.
+    bungie_net_id = memberships["bungieNetUser"]["membershipId"]
     display_name = primary.get("displayName", "")
-    existing = await users.get_by_bungie_id(pool, bungie_mid)
+    existing = await users.get_by_bungie_id(pool, bungie_net_id)
     user_id = await users.upsert(
-        pool, bungie_mid, display_name,
+        pool, bungie_net_id, display_name,
         primary["membershipType"], primary["membershipId"],
     )
     if existing is None:

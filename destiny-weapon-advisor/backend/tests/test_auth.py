@@ -20,6 +20,7 @@ async def test_callback_creates_session_and_status_true(app_client, monkeypatch,
 
     async def fake_members(access, settings, client):
         return {
+            "bungieNetUser": {"membershipId": "bnet-mid1"},
             "primaryMembershipId": "mid1",
             "destinyMemberships": [
                 {"membershipType": 3, "membershipId": "mid1", "displayName": "G"}
@@ -46,6 +47,7 @@ async def test_callback_sets_csrf_cookie(app_client, monkeypatch, clean_db):
 
     async def fake_members(access, settings, client):
         return {
+            "bungieNetUser": {"membershipId": "bnet-mid-csrf1"},
             "primaryMembershipId": "mid-csrf1",
             "destinyMemberships": [
                 {"membershipType": 3, "membershipId": "mid-csrf1", "displayName": "CsrfUser"}

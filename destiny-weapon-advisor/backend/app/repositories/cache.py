@@ -64,10 +64,10 @@ async def manifest_set(pool, key: str, value: str, version: str) -> None:
 
 
 async def manifest_version(pool) -> str | None:
-    """Return the version string from the manifest cache, or None."""
+    """Return the version string for the manifest_items cache row, or None."""
     row = await db.fetchone(
         pool,
-        "SELECT version FROM manifest_cache LIMIT 1",
-        (),
+        "SELECT version FROM manifest_cache WHERE cache_key=%s",
+        ("manifest_items",),
     )
     return row[0] if row is not None else None
