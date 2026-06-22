@@ -21,7 +21,7 @@ function ActivityCard({ activity }: { activity: ActivityRec }) {
 
   const field = (label: string, key: keyof ActivityRec, long = false) => (
     <div style={{ marginBottom: 6 }}>
-      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#555" }}>{label}</label>
+      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--muted)" }}>{label}</label>
       {long ? (
         <textarea value={draft[key]} onChange={(e) => set(key, e.target.value)} rows={2}
           style={{ width: "100%", padding: 5, boxSizing: "border-box" }} />
@@ -33,9 +33,9 @@ function ActivityCard({ activity }: { activity: ActivityRec }) {
   );
 
   return (
-    <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 14, marginBottom: 12, maxWidth: 760 }}>
+    <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 14, marginBottom: 12, maxWidth: 760 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <h3 style={{ margin: 0 }}>{draft.name} <span style={{ color: "#999", fontWeight: 400, fontSize: 13 }}>· {draft.type}</span></h3>
+        <h3 style={{ margin: 0 }}>{draft.name} <span style={{ color: "var(--muted)", fontWeight: 400, fontSize: 13 }}>· {draft.type}</span></h3>
         <button onClick={save} disabled={!dirty} style={{ padding: "4px 14px" }}>
           {dirty ? "Save" : saved ? "Saved ✓" : "Saved"}
         </button>
@@ -88,7 +88,7 @@ export function ActivitiesPage() {
   return (
     <div>
       <h1 style={{ marginTop: 0 }}>Activities</h1>
-      <p style={{ color: "#666", maxWidth: 760 }}>
+      <p style={{ color: "var(--muted)", maxWidth: 760 }}>
         Recommended loadout per activity, seeded from general knowledge.{" "}
         <em>Verify against the current rotation</em> (champions and burns change) and edit freely.
         Add any activity that's missing — newer raids/seasons aren't pre-loaded.
@@ -97,7 +97,7 @@ export function ActivitiesPage() {
         <input placeholder="Add an activity…" value={newName} onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && add()} style={{ padding: 6, width: 240 }} />
         <button onClick={add} style={{ padding: "6px 14px" }}>Add</button>
-        <span style={{ marginLeft: 12, fontSize: 13, color: "#666" }}>Filter:</span>
+        <span style={{ marginLeft: 12, fontSize: 13, color: "var(--muted)" }}>Filter:</span>
         <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
           <option value="all">All types</option>
           {types.map((t) => <option key={t} value={t}>{t}</option>)}

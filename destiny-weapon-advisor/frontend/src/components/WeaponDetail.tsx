@@ -10,9 +10,9 @@ function StatBar({ name, value }: { name: string; value: number }) {
   const showBar = value >= 0 && value <= 100;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-      <span style={{ width: 130, fontSize: 12, color: "#555" }}>{name}</span>
+      <span style={{ width: 130, fontSize: 12, color: "var(--muted)" }}>{name}</span>
       {showBar ? (
-        <div style={{ flex: 1, background: "#eee", borderRadius: 3, height: 10 }}>
+        <div style={{ flex: 1, background: "var(--track)", borderRadius: 3, height: 10 }}>
           <div style={{ width: `${value}%`, background: "#1565c0", height: 10, borderRadius: 3 }} />
         </div>
       ) : (
@@ -60,13 +60,13 @@ export function WeaponDetail({
   }
 
   return (
-    <div style={{ border: "1px solid #ccc", borderRadius: 8, padding: 16, marginBottom: 16 }}>
+    <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 16, marginBottom: 16 }}>
       <button onClick={onClose} style={{ float: "right" }}>Close</button>
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
         <Icon path={w.icon} size={56} alt={w.name} />
         <div>
           <h2 style={{ margin: "0 0 2px" }}>{w.name}</h2>
-          <p style={{ margin: 0, color: "#666" }}>{meta}{w.isMasterworked ? " · ★ Masterworked" : ""}</p>
+          <p style={{ margin: 0, color: "var(--muted)" }}>{meta}{w.isMasterworked ? " · ★ Masterworked" : ""}</p>
         </div>
       </div>
       <p style={{ margin: "0 0 8px" }}>
@@ -80,7 +80,7 @@ export function WeaponDetail({
       </div>
 
       {characters.length > 0 && (
-        <div style={{ background: "#f6f8fa", borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>
+        <div style={{ background: "var(--panel2)", borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>
           <strong style={{ fontSize: 13 }}>Move to: </strong>
           {characters.map((c) => (
             <button
@@ -112,12 +112,12 @@ export function WeaponDetail({
           {w.ratedPerks.map((p) => (
             <div key={p.name} style={{ marginBottom: 3 }}>
               <strong>{p.rating}</strong> · {p.name}
-              {p.reason && <span style={{ color: "#666" }}> — {p.reason}</span>}
+              {p.reason && <span style={{ color: "var(--muted)" }}> — {p.reason}</span>}
             </div>
           ))}
         </>
       ) : (
-        <p style={{ margin: "8px 0 4px", color: "#666" }}>
+        <p style={{ margin: "8px 0 4px", color: "var(--muted)" }}>
           None of this weapon's perks are rated yet — add ratings on the Perks tab.
         </p>
       )}

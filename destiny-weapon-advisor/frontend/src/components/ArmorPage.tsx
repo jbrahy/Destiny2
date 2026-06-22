@@ -94,7 +94,7 @@ export function ArmorPage() {
   if (error) return <div style={{ color: "#c62828" }}>Error: {error}</div>;
   if (armor.length === 0)
     return (
-      <div style={{ color: "#666" }}>
+      <div style={{ color: "var(--muted)" }}>
         Open the <strong>Weapons</strong> tab first — armor is read from the same inventory pull.
       </div>
     );
@@ -113,7 +113,7 @@ export function ArmorPage() {
             onClick={() => setCls(c)}
             style={{
               padding: "6px 14px", fontWeight: c === cls ? 700 : 400,
-              background: c === cls ? "#1b2838" : "#eee", color: c === cls ? "#fff" : "#333",
+              background: c === cls ? "var(--accent)" : "var(--panel2)", color: c === cls ? "#0a0e16" : "var(--text)",
               border: "none", borderRadius: 6, cursor: "pointer",
             }}
           >
@@ -123,19 +123,19 @@ export function ArmorPage() {
       </div>
 
       <div style={{ marginBottom: 12 }}>
-        <span style={{ fontSize: 13, color: "#666", marginRight: 8 }}>Prioritize stats:</span>
+        <span style={{ fontSize: 13, color: "var(--muted)", marginRight: 8 }}>Prioritize stats:</span>
         {statNames.map((s) => (
           <label key={s} style={{ marginRight: 12, fontSize: 13 }}>
             <input type="checkbox" checked={stats.includes(s)} onChange={() => toggleStat(s)} /> {s}
           </label>
         ))}
         {stats.length === 0 && (
-          <span style={{ color: "#999", fontSize: 12 }}>(none selected → maximizing total stats)</span>
+          <span style={{ color: "var(--muted)", fontSize: 12 }}>(none selected → maximizing total stats)</span>
         )}
       </div>
 
       <div style={{ marginBottom: 12 }}>
-        <span style={{ fontSize: 13, color: "#666", marginRight: 8 }}>Minimum totals (optional):</span>
+        <span style={{ fontSize: 13, color: "var(--muted)", marginRight: 8 }}>Minimum totals (optional):</span>
         {statNames.map((s) => (
           <label key={s} style={{ marginRight: 10, fontSize: 13 }}>
             {s.slice(0, 4)}{" "}
@@ -150,7 +150,7 @@ export function ArmorPage() {
 
       <table style={{ borderCollapse: "collapse", width: "100%", maxWidth: 900 }}>
         <thead>
-          <tr style={{ textAlign: "left", borderBottom: "2px solid #ddd" }}>
+          <tr style={{ textAlign: "left", borderBottom: "2px solid var(--border)" }}>
             <th style={{ padding: 6 }}>Slot</th>
             <th style={{ padding: 6 }}>Piece</th>
             {shownStats.map((s) => (
@@ -162,15 +162,15 @@ export function ArmorPage() {
           {SLOTS.map((slot) => {
             const p = chosen[slot];
             return (
-              <tr key={slot} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                <td style={{ padding: 6, color: "#666" }}>{slot}</td>
+              <tr key={slot} style={{ borderBottom: "1px solid var(--border)" }}>
+                <td style={{ padding: 6, color: "var(--muted)" }}>{slot}</td>
                 <td style={{ padding: 6 }}>
                   {p ? (
                     <>
                       {p.name}{" "}
                       {p.isExotic && <span style={{ color: "#caa000", fontWeight: 700 }}>◆</span>}
                       {p.isMasterworked && <span title="masterworked"> ★</span>}
-                      <span style={{ color: "#999", fontSize: 12 }}> · {p.location}</span>
+                      <span style={{ color: "var(--muted)", fontSize: 12 }}> · {p.location}</span>
                     </>
                   ) : (
                     <span style={{ color: "#bbb" }}>— none —</span>
@@ -182,7 +182,7 @@ export function ArmorPage() {
               </tr>
             );
           })}
-          <tr style={{ borderTop: "2px solid #ddd", fontWeight: 700 }}>
+          <tr style={{ borderTop: "2px solid var(--border)", fontWeight: 700 }}>
             <td style={{ padding: 6 }} colSpan={2}>Total</td>
             {shownStats.map((s) => {
               const met = !mins[s] || (totals[s] || 0) >= mins[s];
@@ -201,7 +201,7 @@ export function ArmorPage() {
             ))}
           </tr>
           {minStats.length > 0 && (
-            <tr style={{ color: "#888", fontSize: 12 }}>
+            <tr style={{ color: "var(--muted)", fontSize: 12 }}>
               <td style={{ padding: 6 }} colSpan={2}>Minimum</td>
               {shownStats.map((s) => (
                 <td key={s} style={{ padding: 6, textAlign: "right" }}>{mins[s] || "—"}</td>
@@ -210,7 +210,7 @@ export function ArmorPage() {
           )}
         </tbody>
       </table>
-      <p style={{ color: "#999", fontSize: 12, marginTop: 10 }}>
+      <p style={{ color: "var(--muted)", fontSize: 12, marginTop: 10 }}>
         Best owned pieces per slot, max one exotic. ★ = masterworked. Minimums are best-effort
         (it maximizes those stats; a red total means it couldn't reach your minimum). Base armor
         stats only — mods and fragment bonuses aren't added in.

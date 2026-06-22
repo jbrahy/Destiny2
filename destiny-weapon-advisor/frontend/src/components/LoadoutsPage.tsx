@@ -101,7 +101,7 @@ export function LoadoutsPage() {
       <h1 style={{ marginTop: 0 }}>Loadouts</h1>
       {msg && <p style={{ color: msg.startsWith("✓") || msg.startsWith("Saved") ? "#2e7d32" : "#c62828" }}>{msg}</p>}
 
-      <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 14, marginBottom: 20, maxWidth: 640 }}>
+      <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 14, marginBottom: 20, maxWidth: 640 }}>
         <strong>Save a loadout</strong> from a character's currently-equipped gear:
         <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
           <select value={charId} onChange={(e) => setCharId(e.target.value)}>
@@ -110,20 +110,20 @@ export function LoadoutsPage() {
           <input placeholder="Loadout name…" value={name} onChange={(e) => setName(e.target.value)} />
           <button onClick={save} disabled={busy}>Save current {className} gear</button>
         </div>
-        <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
+        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
           Captures {equippedItems().length} equipped item(s) for {className || "—"}.
         </div>
       </div>
 
       <h2>Saved loadouts</h2>
-      {loadouts.length === 0 && <p style={{ color: "#888" }}>None yet.</p>}
+      {loadouts.length === 0 && <p style={{ color: "var(--muted)" }}>None yet.</p>}
       {loadouts.map((lo) => (
         <div key={lo.name} style={{
-          display: "flex", alignItems: "center", gap: 12, border: "1px solid #eee",
+          display: "flex", alignItems: "center", gap: 12, border: "1px solid var(--border)",
           borderRadius: 8, padding: "8px 12px", marginBottom: 8, maxWidth: 640,
         }}>
           <strong style={{ flex: 1 }}>{lo.name}</strong>
-          <span style={{ color: "#888", fontSize: 13 }}>{lo.items.length} items</span>
+          <span style={{ color: "var(--muted)", fontSize: 13 }}>{lo.items.length} items</span>
           <button onClick={() => apply(lo)} disabled={busy}>Apply</button>
           <button onClick={() => remove(lo)} disabled={busy} style={{ color: "#c62828" }}>Delete</button>
         </div>
@@ -131,19 +131,19 @@ export function LoadoutsPage() {
 
       <h2 style={{ marginTop: 24 }}>Postmaster</h2>
       {postmaster.length === 0 ? (
-        <p style={{ color: "#888" }}>Postmaster is empty.</p>
+        <p style={{ color: "var(--muted)" }}>Postmaster is empty.</p>
       ) : (
         <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}>
           {postmaster.map((it) => (
             <div key={it.instanceId || `${it.characterId}-${it.itemHash}`} style={{
-              display: "flex", gap: 8, alignItems: "center", border: "1px solid #eee", borderRadius: 6, padding: 8,
+              display: "flex", gap: 8, alignItems: "center", border: "1px solid var(--border)", borderRadius: 6, padding: 8,
             }}>
               <Icon path={it.icon} size={36} alt={it.name} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {it.name}{it.quantity > 1 ? ` ×${it.quantity}` : ""}
                 </strong>
-                <span style={{ fontSize: 12, color: "#666" }}>{it.className}</span>
+                <span style={{ fontSize: 12, color: "var(--muted)" }}>{it.className}</span>
               </div>
               <button onClick={() => pull(it)} disabled={busy}>Pull</button>
             </div>

@@ -72,7 +72,7 @@ export function PerksPage() {
   if (error) return <div style={{ color: "#c62828" }}>Error: {error}</div>;
   if (groups.length === 0)
     return (
-      <div style={{ color: "#666" }}>
+      <div style={{ color: "var(--muted)" }}>
         Open the <strong>Weapons</strong> tab first — perks are gathered from your inventory.
       </div>
     );
@@ -80,7 +80,7 @@ export function PerksPage() {
   return (
     <div>
       <h1 style={{ marginTop: 0 }}>Perk Ratings</h1>
-      <p style={{ color: "#666", maxWidth: 720 }}>
+      <p style={{ color: "var(--muted)", maxWidth: 720 }}>
         Rate each perk <strong>per weapon type</strong> and add your own notes. Seeded from general
         PvE/PvP knowledge — edit freely; your weapon verdicts update automatically, so switch to the{" "}
         <strong>Weapons</strong> tab to see them. <em>Verify against the current season.</em>
@@ -94,29 +94,29 @@ export function PerksPage() {
       {filtered.map((g) => {
         const isOpen = open[g.weaponType] ?? false;
         return (
-          <div key={g.weaponType} style={{ border: "1px solid #ddd", borderRadius: 8, marginBottom: 10 }}>
+          <div key={g.weaponType} style={{ border: "1px solid var(--border)", borderRadius: 8, marginBottom: 10 }}>
             <div
               onClick={() => setOpen((o) => ({ ...o, [g.weaponType]: !isOpen }))}
               style={{
                 padding: "10px 14px", cursor: "pointer", fontWeight: 600,
-                background: "#f5f5f5", borderRadius: 8,
+                background: "var(--panel2)", borderRadius: 8,
               }}
             >
               {isOpen ? "▾" : "▸"} {g.weaponType}{" "}
-              <span style={{ color: "#999", fontWeight: 400 }}>({g.perks.length})</span>
+              <span style={{ color: "var(--muted)", fontWeight: 400 }}>({g.perks.length})</span>
             </div>
             {isOpen && (
               <div style={{ padding: "8px 14px" }}>
                 {g.perks.map((p) => (
                   <div
                     key={p.name}
-                    style={{ padding: "10px 0", borderBottom: "1px solid #f1f1f1" }}
+                    style={{ padding: "10px 0", borderBottom: "1px solid var(--border)" }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <select
                         value={p.rating}
                         onChange={(e) => patch(g.weaponType, p.name, { rating: e.target.value })}
-                        style={{ width: 52, fontWeight: 700, color: TIER_COLOR[p.rating] || "#333" }}
+                        style={{ width: 52, fontWeight: 700, color: TIER_COLOR[p.rating] || "var(--text)" }}
                       >
                         {TIERS.map((t) => (
                           <option key={t} value={t}>{t || "—"}</option>
@@ -138,10 +138,10 @@ export function PerksPage() {
                       </button>
                     </div>
                     {p.description && (
-                      <p style={{ margin: "4px 0 2px", fontSize: 13, color: "#444" }}>{p.description}</p>
+                      <p style={{ margin: "4px 0 2px", fontSize: 13, color: "var(--text)" }}>{p.description}</p>
                     )}
                     {p.reason && (
-                      <p style={{ margin: "2px 0", fontSize: 12, color: "#888" }}>
+                      <p style={{ margin: "2px 0", fontSize: 12, color: "var(--muted)" }}>
                         <em>Why this tier:</em> {p.reason}
                       </p>
                     )}
