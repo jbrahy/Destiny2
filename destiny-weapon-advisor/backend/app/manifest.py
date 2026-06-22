@@ -1,10 +1,7 @@
 import json
-import sqlite3
 from dataclasses import dataclass, field
 
-import httpx
-
-from app.storage import kv_get, kv_set
+from app.repositories import cache
 
 _BASE = "https://www.bungie.net"
 _AMMO_TYPES = {1: "Primary", 2: "Special", 3: "Heavy"}
@@ -52,11 +49,11 @@ class Manifest:
         return dp.get("name", "")
 
 
-def load_cached_manifest(conn: sqlite3.Connection) -> Manifest | None:
-    """Load the manifest from the local cache only (no network). Returns None
+async def load_cached_manifest(pool) -> "Manifest | None":
+    """Load the manifest from the MySQL cache only (no network). Returns None
     if it has not been downloaded yet."""
-    raw = kv_get(conn, "manifest_items")
-    raw_stats = kv_get(conn, "manifest_stats")
+    raw = await cache.manifest_get(pool, "manifest_items")
+    raw_stats = await cache.manifest_get(pool, "manifest_stats")
     if not raw or not raw_stats:
         return None
     return Manifest(
@@ -65,18 +62,18 @@ def load_cached_manifest(conn: sqlite3.Connection) -> Manifest | None:
     )
 
 
-async def load_manifest(client: httpx.AsyncClient, conn: sqlite3.Connection) -> Manifest:
+async def load_manifest(client, pool, throttle) -> "Manifest":
     """Load the manifest. The passed httpx client MUST be constructed with an
     'X-API-Key' default header — the Bungie /Platform manifest endpoint requires it."""
-    meta = await client.get(f"{_BASE}/Platform/Destiny2/Manifest/")
+    meta = await throttle.run(lambda: client.get(f"{_BASE}/Platform/Destiny2/Manifest/"))
     meta.raise_for_status()
     data = meta.json()["Response"]
     version = data["version"]
-    cached_version = kv_get(conn, "manifest_version")
+    cached_version = await cache.manifest_version(pool)
 
     if cached_version == version:
-        raw = kv_get(conn, "manifest_items")
-        raw_stats = kv_get(conn, "manifest_stats")
+        raw = await cache.manifest_get(pool, "manifest_items")
+        raw_stats = await cache.manifest_get(pool, "manifest_stats")
         if raw and raw_stats:
             return Manifest(
                 items={int(k): v for k, v in json.loads(raw).items()},
@@ -84,15 +81,18 @@ async def load_manifest(client: httpx.AsyncClient, conn: sqlite3.Connection) -> 
             )
 
     paths = data["jsonWorldComponentContentPaths"]["en"]
-    defs = await client.get(f"{_BASE}{paths['DestinyInventoryItemDefinition']}", timeout=120.0)
+    defs = await throttle.run(
+        lambda: client.get(f"{_BASE}{paths['DestinyInventoryItemDefinition']}", timeout=120.0)
+    )
     defs.raise_for_status()
     items = defs.json()
-    stat_defs = await client.get(f"{_BASE}{paths['DestinyStatDefinition']}", timeout=120.0)
+    stat_defs = await throttle.run(
+        lambda: client.get(f"{_BASE}{paths['DestinyStatDefinition']}", timeout=120.0)
+    )
     stat_defs.raise_for_status()
     stats = stat_defs.json()
-    kv_set(conn, "manifest_items", json.dumps(items))
-    kv_set(conn, "manifest_stats", json.dumps(stats))
-    kv_set(conn, "manifest_version", version)
+    await cache.manifest_set(pool, "manifest_items", json.dumps(items), version)
+    await cache.manifest_set(pool, "manifest_stats", json.dumps(stats), version)
     return Manifest(
         items={int(k): v for k, v in items.items()},
         stats={int(k): v for k, v in stats.items()},
