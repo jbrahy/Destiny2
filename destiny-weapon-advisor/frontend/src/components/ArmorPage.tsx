@@ -115,8 +115,12 @@ export function ArmorPage() {
 
   async function removeSet(s: ArmorSet) {
     if (!window.confirm(`Delete armor set "${s.name}"?`)) return;
-    await deleteArmorSet(s.name);
-    fetchArmorSets().then(setArmorSets);
+    try {
+      await deleteArmorSet(s.name);
+      fetchArmorSets().then(setArmorSets);
+    } catch (e) {
+      setSaveMsg(String(e));
+    }
   }
 
   useEffect(() => {
@@ -301,7 +305,7 @@ export function ArmorPage() {
             {classChars.length === 0 && <option value="">No {cls} character</option>}
             {classChars.map((c) => <option key={c.id} value={c.id}>{c.className} ✦{c.light}</option>)}
           </select>
-          <button onClick={saveSet} disabled={busy || !setItems.length || !targetChar}>Save</button>
+          <button onClick={saveSet} disabled={busy || !setName.trim() || !setItems.length || !targetChar}>Save</button>
         </div>
         <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
           Saves {setItems.length} piece(s) · Tier {armorSetTier(chosen)} for {cls}.
