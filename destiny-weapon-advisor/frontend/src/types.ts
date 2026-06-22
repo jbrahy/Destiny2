@@ -120,3 +120,11 @@ export interface Recommendations {
   context: string;
   slots: Record<"Primary" | "Special" | "Heavy", RecommendedWeapon[]>;
 }
+
+export interface LoadoutSuggestion {
+  activity: string;
+  subclass: { class: string; subclass: string; build: Build | null };
+  weapons: Record<"Primary" | "Special" | "Heavy", (WeaponDto & { recommendReason?: string }) | null>;
+  elementCoverage: { elements: string[]; activityElement: string | null; matchesActivity: boolean };
+  guidance: string;
+}

@@ -1,5 +1,5 @@
 import {
-  ActivityRec, ArmorPiece, Build, Character, Loadout, LoadoutItem, Membership, MoveResult,
+  ActivityRec, ArmorPiece, Build, Character, Loadout, LoadoutItem, LoadoutSuggestion, Membership, MoveResult,
   PostmasterItem, Recommendations, WeaponDto, WeaponTypePerks,
 } from "./types";
 
@@ -212,4 +212,10 @@ export async function fetchRecommendations(context: string): Promise<Recommendat
   const res = await fetch(`/api/recommendations?context=${encodeURIComponent(context)}`);
   if (!res.ok) throw new Error(`Failed to load recommendations (${res.status})`);
   return (await res.json()) as Recommendations;
+}
+
+export async function fetchLoadoutSuggestion(activity: string): Promise<LoadoutSuggestion> {
+  const res = await fetch(`/api/loadout-suggestion?activity=${encodeURIComponent(activity)}`);
+  if (!res.ok) throw new Error(`Failed to load loadout suggestion (${res.status})`);
+  return (await res.json()) as LoadoutSuggestion;
 }
