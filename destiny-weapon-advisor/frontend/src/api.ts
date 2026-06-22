@@ -1,5 +1,5 @@
 import {
-  ActivityRec, ArmorPiece, Build, Character, Loadout, LoadoutItem, LoadoutSuggestion, Membership, MoveResult,
+  ActivityRec, ArmorPiece, ArmorSet, Build, Character, Loadout, LoadoutItem, LoadoutSuggestion, Membership, MoveResult,
   PostmasterItem, Recommendations, WeaponDto, WeaponTypePerks,
 } from "./types";
 
@@ -218,4 +218,37 @@ export async function fetchLoadoutSuggestion(activity: string): Promise<LoadoutS
   const res = await fetch(`/api/loadout-suggestion?activity=${encodeURIComponent(activity)}`);
   if (!res.ok) throw new Error(`Failed to load loadout suggestion (${res.status})`);
   return (await res.json()) as LoadoutSuggestion;
+}
+
+export async function fetchArmorSets(): Promise<ArmorSet[]> {
+  const res = await fetch("/api/armor-sets");
+  if (!res.ok) throw new Error(`Failed to load armor sets (${res.status})`);
+  return (await res.json()).armorSets as ArmorSet[];
+}
+
+export async function saveArmorSet(set: ArmorSet): Promise<void> {
+  const res = await fetch("/api/armor-sets", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(set),
+  });
+  if (!res.ok) throw new Error(`Failed to save armor set (${res.status})`);
+}
+
+export async function deleteArmorSet(name: string): Promise<void> {
+  const res = await fetch(`/api/armor-sets/${encodeURIComponent(name)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Failed to delete armor set (${res.status})`);
+}
+
+export async function applyArmorSet(name: string): Promise<MoveResult[]> {
+  const res = await fetch("/api/armor-sets/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(data.detail || `Apply failed (${res.status})`);
+  }
+  return (await res.json()).results as MoveResult[];
 }
