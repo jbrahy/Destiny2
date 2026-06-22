@@ -90,6 +90,14 @@ class ApplyLoadoutBody(BaseModel):
     name: str
 
 
+class ArmorSetBody(BaseModel):
+    name: str
+    className: str
+    characterId: str
+    tier: int
+    items: list[dict]  # [{instanceId, itemHash, slot, name}]
+
+
 class PullPostmasterBody(BaseModel):
     itemHash: int
     instanceId: str
@@ -741,6 +749,49 @@ def delete_loadout(name: str) -> dict:
     conn = get_conn(get_settings().db_path)
     _ensure_loadouts(conn)
     conn.execute("DELETE FROM loadouts WHERE name = ?", (name,))
+    conn.commit()
+    return {"ok": True}
+
+
+def _ensure_armor_sets(conn) -> None:
+    conn.execute("CREATE TABLE IF NOT EXISTS armor_sets (name TEXT PRIMARY KEY, data TEXT)")
+    conn.commit()
+
+
+@app.get("/api/armor-sets")
+def get_armor_sets() -> dict:
+    conn = get_conn(get_settings().db_path)
+    _ensure_armor_sets(conn)
+    out = []
+    for name, data in conn.execute("SELECT name, data FROM armor_sets"):
+        out.append({"name": name, **json.loads(data)})
+    return {"armorSets": out}
+
+
+@app.put("/api/armor-sets")
+def put_armor_set(body: ArmorSetBody) -> dict:
+    conn = get_conn(get_settings().db_path)
+    _ensure_armor_sets(conn)
+    data = json.dumps({
+        "className": body.className,
+        "characterId": body.characterId,
+        "tier": body.tier,
+        "items": body.items,
+    })
+    conn.execute(
+        "INSERT INTO armor_sets (name, data) VALUES (?, ?) "
+        "ON CONFLICT(name) DO UPDATE SET data = excluded.data",
+        (body.name, data),
+    )
+    conn.commit()
+    return {"ok": True}
+
+
+@app.delete("/api/armor-sets/{name}")
+def delete_armor_set(name: str) -> dict:
+    conn = get_conn(get_settings().db_path)
+    _ensure_armor_sets(conn)
+    conn.execute("DELETE FROM armor_sets WHERE name = ?", (name,))
     conn.commit()
     return {"ok": True}
 
