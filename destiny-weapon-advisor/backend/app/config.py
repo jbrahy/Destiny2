@@ -3,7 +3,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore",
+    )
 
     bungie_api_key: str = ""
     bungie_client_id: str = ""
@@ -13,10 +15,6 @@ class Settings(BaseSettings):
     # backend's own origin (single-server mode, which serves the built frontend).
     # For Vite dev, set FRONTEND_URL=http://localhost:5173 in .env.
     frontend_url: str = "https://localhost:8443"
-    wishlist_url: str = (
-        "https://raw.githubusercontent.com/48klocs/"
-        "dim-wish-list-sources/master/voltron.txt"
-    )
     db_path: str = "weapon_advisor.sqlite"
 
 

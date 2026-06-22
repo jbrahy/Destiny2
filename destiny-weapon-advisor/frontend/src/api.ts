@@ -108,6 +108,14 @@ export async function fetchArmor(): Promise<{ armor: ArmorPiece[]; statNames: st
   return res.json();
 }
 
+export async function fetchCounts(): Promise<{
+  weapons: number; armor: number; vaultWeapons: number; vaultArmor: number;
+}> {
+  const res = await fetch("/api/counts");
+  if (!res.ok) throw new Error(`Failed to load counts (${res.status})`);
+  return res.json();
+}
+
 export async function fetchCharacters(): Promise<Character[]> {
   const res = await fetch("/api/characters");
   if (!res.ok) throw new Error(`Failed to load characters (${res.status})`);

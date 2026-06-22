@@ -50,6 +50,7 @@ export function ArmorPage() {
   const [error, setError] = useState<string | null>(null);
   const [cls, setCls] = useState("Hunter");
   const [stats, setStats] = useState<string[]>([]);
+  const [mins, setMins] = useState<Record<string, number>>({});
 
   useEffect(() => {
     fetchArmor()
@@ -68,7 +69,12 @@ export function ArmorPage() {
     [armor, cls],
   );
 
-  const chosen = useMemo(() => optimize(pool, stats), [pool, stats]);
+  const minStats = useMemo(() => Object.keys(mins).filter((k) => mins[k] > 0), [mins]);
+  const objectiveStats = useMemo(
+    () => Array.from(new Set([...stats, ...minStats])),
+    [stats, minStats],
+  );
+  const chosen = useMemo(() => optimize(pool, objectiveStats), [pool, objectiveStats]);
 
   const totals = useMemo(() => {
     const t: Record<string, number> = {};
@@ -93,7 +99,9 @@ export function ArmorPage() {
       </div>
     );
 
-  const shownStats = stats.length ? stats : statNames;
+  const shownStats = (stats.length || minStats.length)
+    ? Array.from(new Set([...stats, ...minStats]))
+    : statNames;
 
   return (
     <div>
@@ -126,6 +134,20 @@ export function ArmorPage() {
         )}
       </div>
 
+      <div style={{ marginBottom: 12 }}>
+        <span style={{ fontSize: 13, color: "#666", marginRight: 8 }}>Minimum totals (optional):</span>
+        {statNames.map((s) => (
+          <label key={s} style={{ marginRight: 10, fontSize: 13 }}>
+            {s.slice(0, 4)}{" "}
+            <input
+              type="number" min={0} value={mins[s] || ""}
+              style={{ width: 48 }}
+              onChange={(e) => setMins((m) => ({ ...m, [s]: Number(e.target.value) || 0 }))}
+            />
+          </label>
+        ))}
+      </div>
+
       <table style={{ borderCollapse: "collapse", width: "100%", maxWidth: 900 }}>
         <thead>
           <tr style={{ textAlign: "left", borderBottom: "2px solid #ddd" }}>
@@ -147,6 +169,7 @@ export function ArmorPage() {
                     <>
                       {p.name}{" "}
                       {p.isExotic && <span style={{ color: "#caa000", fontWeight: 700 }}>◆</span>}
+                      {p.isMasterworked && <span title="masterworked"> ★</span>}
                       <span style={{ color: "#999", fontSize: 12 }}> · {p.location}</span>
                     </>
                   ) : (
@@ -161,9 +184,15 @@ export function ArmorPage() {
           })}
           <tr style={{ borderTop: "2px solid #ddd", fontWeight: 700 }}>
             <td style={{ padding: 6 }} colSpan={2}>Total</td>
-            {shownStats.map((s) => (
-              <td key={s} style={{ padding: 6, textAlign: "right" }}>{totals[s] || 0}</td>
-            ))}
+            {shownStats.map((s) => {
+              const met = !mins[s] || (totals[s] || 0) >= mins[s];
+              return (
+                <td key={s} style={{
+                  padding: 6, textAlign: "right",
+                  color: mins[s] ? (met ? "#2e7d32" : "#c62828") : undefined,
+                }}>{totals[s] || 0}</td>
+              );
+            })}
           </tr>
           <tr style={{ color: "#1565c0" }}>
             <td style={{ padding: 6 }} colSpan={2}>Tier (÷10)</td>
@@ -171,11 +200,20 @@ export function ArmorPage() {
               <td key={s} style={{ padding: 6, textAlign: "right" }}>{Math.floor((totals[s] || 0) / 10)}</td>
             ))}
           </tr>
+          {minStats.length > 0 && (
+            <tr style={{ color: "#888", fontSize: 12 }}>
+              <td style={{ padding: 6 }} colSpan={2}>Minimum</td>
+              {shownStats.map((s) => (
+                <td key={s} style={{ padding: 6, textAlign: "right" }}>{mins[s] || "—"}</td>
+              ))}
+            </tr>
+          )}
         </tbody>
       </table>
       <p style={{ color: "#999", fontSize: 12, marginTop: 10 }}>
-        Best owned pieces per slot for your selected stats, max one exotic. Base armor stats only —
-        mods, masterwork bonuses, and fragments aren't added yet.
+        Best owned pieces per slot, max one exotic. ★ = masterworked. Minimums are best-effort
+        (it maximizes those stats; a red total means it couldn't reach your minimum). Base armor
+        stats only — mods and fragment bonuses aren't added in.
       </p>
     </div>
   );

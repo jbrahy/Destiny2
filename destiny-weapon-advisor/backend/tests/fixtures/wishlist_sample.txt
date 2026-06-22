@@ -1,7 +1,0 @@
-title:Sample
-// A comment line that must be ignored
-dimwishlist:item=100&perks=2,3#notes:great pve roll
-dimwishlist:item=100&perks=2#notes:decent pvp option
-dimwishlist:item=-100&perks=9,9#notes:trash roll, dismantle
-dimwishlist:item=200&perks=5,6
-not a wishlist line at all
