@@ -26,6 +26,9 @@ from app.loadout_builder import build_loadout
 from app.storage import get_conn, kv_get, kv_set
 from scripts.migrate import apply_migrations
 from app.auth import router as auth_router, get_current_user
+from app.bungie_session import valid_access_token
+from app.bungie_throttle import Throttle
+from app.repositories import cache, perk_ratings as perk_ratings_repo, builds as builds_repo
 
 
 @asynccontextmanager
@@ -33,6 +36,7 @@ async def lifespan(app: FastAPI):
     pool = await db.create_pool(get_settings())
     await apply_migrations(pool)
     app.state.pool = pool
+    app.state.throttle = Throttle(get_settings().bungie_throttle_concurrency)
     yield
     pool.close()
     await pool.wait_closed()
@@ -122,28 +126,7 @@ def health() -> dict[str, str]:
 
 
 
-async def _valid_access_token(settings, conn, client) -> tuple[str, int, str]:
-    row = conn.execute(
-        "SELECT access_token, refresh_token, expires_at, membership_type, membership_id "
-        "FROM tokens WHERE id = 1"
-    ).fetchone()
-    if not row:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    access, refresh, expires_at, mtype, mid = row
-    if time.time() > expires_at - 60:
-        try:
-            tokens = await refresh_tokens(refresh, settings, client)
-        except Exception:
-            conn.execute("DELETE FROM tokens")
-            conn.commit()
-            raise HTTPException(status_code=401, detail="Session expired; please log in again.")
-        access = tokens["access_token"]
-        conn.execute(
-            "UPDATE tokens SET access_token = ?, refresh_token = ?, expires_at = ? WHERE id = 1",
-            (access, tokens["refresh_token"], time.time() + tokens["expires_in"]),
-        )
-        conn.commit()
-    return access, mtype, mid
+# _valid_access_token (SQLite single-user) retired; per-user callers use valid_access_token from bungie_session.
 
 
 def weapon_to_dict(weapon, info: dict) -> dict:
@@ -173,7 +156,8 @@ def weapon_to_dict(weapon, info: dict) -> dict:
     }
 
 
-def _compute_weapons(conn, manifest: Manifest, profile: dict) -> dict:
+async def _compute_weapons(pool, uid: int, manifest: Manifest, profile: dict) -> dict:
+    settings = get_settings()
     owned = assemble_weapons(profile, manifest)
     desc_map: dict[str, str] = {}
     icon_map: dict[str, str] = {}
@@ -188,17 +172,17 @@ def _compute_weapons(conn, manifest: Manifest, profile: dict) -> dict:
             icon = manifest.icon(plug_hash)
             if icon:
                 icon_map[name] = icon
-    kv_set(conn, "perk_desc_map", json.dumps(desc_map))
-    kv_set(conn, "perk_icon_map", json.dumps(icon_map))
-    ratings = load_ratings(conn)
+    await cache.set(pool, uid, "perk_desc_map", json.dumps(desc_map), settings.user_cache_ttl_seconds)
+    await cache.set(pool, uid, "perk_icon_map", json.dumps(icon_map), settings.user_cache_ttl_seconds)
+    ratings = await perk_ratings_repo.load(pool, uid)
     scored = score_by_perks(owned, ratings)
     result = {
         "weapons": [weapon_to_dict(s["weapon"], s) for s in scored],
         "cachedAt": time.time(),
     }
-    kv_set(conn, "weapons_cache", json.dumps(result))
+    await cache.set(pool, uid, "weapons_cache", json.dumps(result), settings.user_cache_ttl_seconds)
     armor = assemble_armor(profile, manifest)
-    kv_set(conn, "armor_cache", json.dumps([_armor_to_dict(a) for a in armor]))
+    await cache.set(pool, uid, "armor_cache", json.dumps([_armor_to_dict(a) for a in armor]), settings.user_cache_ttl_seconds)
     return result
 
 
@@ -219,41 +203,47 @@ def _armor_to_dict(a) -> dict:
     }
 
 
-def _recompute_from_cache(conn) -> bool:
+async def _recompute_from_cache(pool, uid: int) -> bool:
     """Re-score the cached inventory with current ratings — no Bungie call."""
-    profile_raw = kv_get(conn, "profile_cache")
-    manifest = load_cached_manifest(conn)
+    profile_raw = await cache.get(pool, uid, "profile_cache")
+    manifest = await load_cached_manifest(pool)
     if not profile_raw or manifest is None:
         return False
-    _compute_weapons(conn, manifest, json.loads(profile_raw))
+    await _compute_weapons(pool, uid, manifest, json.loads(profile_raw))
     return True
 
 
 @app.get("/api/weapons")
-async def weapons(refresh: bool = False, current_user: dict = Depends(get_current_user)) -> dict:
+async def weapons(
+    request: Request,
+    refresh: bool = False,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
     settings = get_settings()
-    conn = get_conn(settings.db_path)
+    uid = current_user["user_id"]
     if not refresh:
-        cached = kv_get(conn, "weapons_cache")
+        cached = await cache.get(pool, uid, "weapons_cache")
         if cached:
             return json.loads(cached)
+    throttle = request.app.state.throttle
     async with httpx.AsyncClient(
         timeout=120.0, headers={"X-API-Key": settings.bungie_api_key}
     ) as client:
-        access, mtype, mid = await _valid_access_token(settings, conn, client)
-        manifest = await load_manifest(client, conn)
-        profile = await get_profile(mtype, mid, access, settings, client)
-    kv_set(conn, "profile_cache", json.dumps(profile))
-    kv_set(conn, "profile_membership_id", mid)
-    return _compute_weapons(conn, manifest, profile)
+        access, mtype, mid = await valid_access_token(pool, uid, settings, client, settings.token_enc_key)
+        manifest = await load_manifest(client, pool, throttle)
+        profile = await throttle.run(lambda: get_profile(mtype, mid, access, settings, client))
+    await cache.set(pool, uid, "profile_cache", json.dumps(profile), settings.user_cache_ttl_seconds)
+    await cache.set(pool, uid, "profile_membership_id", mid, settings.user_cache_ttl_seconds)
+    return await _compute_weapons(pool, uid, manifest, profile)
 
 
-def _resolve_rec_context(conn, context: str) -> dict:
+def _resolve_rec_context(activities: list, context: str) -> dict:
     if context == "general-pve":
         return {"label": "General (PvE)", "element": None}
     if context == "general-pvp":
         return {"label": "General (PvP)", "element": None}
-    for activity in load_activities(conn):
+    for activity in activities:
         if activity.get("name") == context:
             return {
                 "label": activity["name"],
@@ -263,31 +253,39 @@ def _resolve_rec_context(conn, context: str) -> dict:
 
 
 @app.get("/api/recommendations")
-def recommendations(context: str = "general-pve") -> dict:
-    settings = get_settings()
-    conn = get_conn(settings.db_path)
-    cached = kv_get(conn, "weapons_cache")
-    if not cached and _recompute_from_cache(conn):
-        cached = kv_get(conn, "weapons_cache")
+async def recommendations(
+    context: str = "general-pve",
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    cached = await cache.get(pool, uid, "weapons_cache")
+    if not cached and await _recompute_from_cache(pool, uid):
+        cached = await cache.get(pool, uid, "weapons_cache")
     weapons_list = json.loads(cached).get("weapons", []) if cached else []
-    ctx = _resolve_rec_context(conn, context)
+    activities = await builds_repo.load_activities(pool, uid)
+    ctx = _resolve_rec_context(activities, context)
     return recommend_weapons(weapons_list, ctx)
 
 
 @app.get("/api/loadout-suggestion")
-def loadout_suggestion(activity: str) -> dict:
-    settings = get_settings()
-    conn = get_conn(settings.db_path)
-    activities = load_activities(conn)
+async def loadout_suggestion(
+    activity: str,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    activities = await builds_repo.load_activities(pool, uid)
     match = next((a for a in activities if a.get("name") == activity), None)
     if match is None:
         raise HTTPException(status_code=404, detail=f"Unknown activity: {activity}")
-    cached = kv_get(conn, "weapons_cache")
-    if not cached and _recompute_from_cache(conn):
-        cached = kv_get(conn, "weapons_cache")
+    cached = await cache.get(pool, uid, "weapons_cache")
+    if not cached and await _recompute_from_cache(pool, uid):
+        cached = await cache.get(pool, uid, "weapons_cache")
     weapons_list = json.loads(cached).get("weapons", []) if cached else []
     key = f"{match.get('recommendedClass', '')}|{match.get('recommendedSubclass', '')}"
-    build = load_builds(conn).get(key)
+    builds = await builds_repo.load_builds(pool, uid)
+    build = builds.get(key)
     return build_loadout(weapons_list, match, build)
 
 
@@ -425,9 +423,12 @@ async def activities_catalog() -> dict:
 
 
 @app.get("/api/armor")
-def get_armor() -> dict:
-    conn = get_conn(get_settings().db_path)
-    cached = kv_get(conn, "armor_cache")
+async def get_armor(
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    cached = await cache.get(pool, uid, "armor_cache")
     armor = json.loads(cached) if cached else []
     stat_names: set[str] = set()
     for piece in armor:
@@ -484,10 +485,13 @@ def select_membership(body: MembershipSelectBody) -> dict:
 
 
 @app.get("/api/counts")
-def get_counts() -> dict:
-    conn = get_conn(get_settings().db_path)
-    weapons_raw = kv_get(conn, "weapons_cache")
-    armor_raw = kv_get(conn, "armor_cache")
+async def get_counts(
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    weapons_raw = await cache.get(pool, uid, "weapons_cache")
+    armor_raw = await cache.get(pool, uid, "armor_cache")
     weapons = json.loads(weapons_raw)["weapons"] if weapons_raw else []
     armor = json.loads(armor_raw) if armor_raw else []
     return {
@@ -499,9 +503,12 @@ def get_counts() -> dict:
 
 
 @app.get("/api/characters")
-def get_characters() -> dict:
-    conn = get_conn(get_settings().db_path)
-    profile_raw = kv_get(conn, "profile_cache")
+async def get_characters(
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    profile_raw = await cache.get(pool, uid, "profile_cache")
     if not profile_raw:
         return {"characters": []}
     chars = json.loads(profile_raw).get("characters", {}).get("data", {})
@@ -542,16 +549,17 @@ async def _move_one(client, settings, access, mtype, profile, instance_id, item_
         await equip_item(mtype, instance_id, target, access, settings, client)
 
 
-def _save_profile(conn, fresh: dict, mid: str) -> None:
-    kv_set(conn, "profile_cache", json.dumps(fresh))
-    kv_set(conn, "profile_membership_id", mid)
-    manifest = load_cached_manifest(conn)
+async def _save_profile(pool, uid: int, fresh: dict, mid: str) -> None:
+    settings = get_settings()
+    await cache.set(pool, uid, "profile_cache", json.dumps(fresh), settings.user_cache_ttl_seconds)
+    await cache.set(pool, uid, "profile_membership_id", mid, settings.user_cache_ttl_seconds)
+    manifest = await load_cached_manifest(pool)
     if manifest is not None:
-        _compute_weapons(conn, manifest, fresh)
+        await _compute_weapons(pool, uid, manifest, fresh)
 
 
-def _load_profile_or_400(conn) -> dict:
-    raw = kv_get(conn, "profile_cache")
+async def _load_profile_or_400(pool, uid: int) -> dict:
+    raw = await cache.get(pool, uid, "profile_cache")
     if not raw:
         raise HTTPException(status_code=400, detail="Load your inventory first.")
     return json.loads(raw)

@@ -80,3 +80,43 @@ async def app_client(clean_db):
             transport=ASGITransport(app=app), base_url="http://t"
         ) as client:
             yield client
+
+
+async def login_user(app_client, monkeypatch, bungie_id: str = "bm1") -> int:
+    """Log in a synthetic user and return their user_id.
+
+    Hits /api/login to seed an OAuth state, monkeypatches exchange_code and
+    get_memberships, then calls /callback which sets the sid cookie on
+    app_client.  Returns the user_id that was created/upserted.
+    """
+    import app.auth as auth_module
+    from app.repositories import users as users_repo  # noqa: F401 used below
+
+    # Seed a valid OAuth state by hitting /api/login.
+    loc = (await app_client.get("/api/login", follow_redirects=False)).headers["location"]
+    state = loc.split("state=")[1].split("&")[0]
+
+    async def fake_exchange(code, settings, client):
+        return {"access_token": f"acc-{bungie_id}", "refresh_token": f"ref-{bungie_id}", "expires_in": 3600}
+
+    async def fake_members(access, settings, client):
+        return {
+            "primaryMembershipId": bungie_id,
+            "destinyMemberships": [
+                {"membershipType": 3, "membershipId": bungie_id, "displayName": f"User-{bungie_id}"}
+            ],
+        }
+
+    monkeypatch.setattr(auth_module, "exchange_code", fake_exchange)
+    monkeypatch.setattr(auth_module, "get_memberships", fake_members)
+
+    r = await app_client.get(f"/callback?code=x&state={state}", follow_redirects=False)
+    assert r.status_code in (302, 307), f"callback failed: {r.status_code} {r.text}"
+
+    # The sid cookie is now set on app_client.  Look up the user_id from DB.
+    pool = app_client._transport.app.state.pool
+    # upsert is idempotent — returns user_id without re-creating anything.
+    uid = await users_repo.upsert(
+        pool, bungie_id, f"User-{bungie_id}", 3, bungie_id
+    )
+    return uid

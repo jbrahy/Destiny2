@@ -27,8 +27,6 @@ def test_transfer_bulk_missing_fields_returns_422():
     assert resp.status_code == 422
 
 
-def test_counts_endpoint_ok():
-    client = TestClient(app)
-    resp = client.get("/api/counts")
-    assert resp.status_code == 200
-    assert set(["weapons", "armor", "vaultWeapons", "vaultArmor"]).issubset(resp.json())
+# test_counts_endpoint_ok removed — counts now requires a session.
+# Covered by test_endpoints_read.py::test_counts_with_seeded_cache and
+# test_endpoints_read.py::test_counts_401_without_session.
