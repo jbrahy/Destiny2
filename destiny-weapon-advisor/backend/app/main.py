@@ -21,6 +21,7 @@ from app.manifest import Manifest, load_cached_manifest, load_manifest
 from app.perk_ratings import TIER_SCORE, load_ratings, save_rating
 from app.perk_scoring import score_by_perks
 from app.recommend import element_for_subclass, recommend_weapons
+from app.loadout_builder import build_loadout
 from app.storage import get_conn, kv_get, kv_set
 
 app = FastAPI(title="Destiny 2 Weapon Advisor")
@@ -321,6 +322,23 @@ def recommendations(context: str = "general-pve") -> dict:
     weapons_list = json.loads(cached).get("weapons", []) if cached else []
     ctx = _resolve_rec_context(conn, context)
     return recommend_weapons(weapons_list, ctx)
+
+
+@app.get("/api/loadout-suggestion")
+def loadout_suggestion(activity: str) -> dict:
+    settings = get_settings()
+    conn = get_conn(settings.db_path)
+    activities = load_activities(conn)
+    match = next((a for a in activities if a.get("name") == activity), None)
+    if match is None:
+        raise HTTPException(status_code=404, detail=f"Unknown activity: {activity}")
+    cached = kv_get(conn, "weapons_cache")
+    if not cached and _recompute_from_cache(conn):
+        cached = kv_get(conn, "weapons_cache")
+    weapons_list = json.loads(cached).get("weapons", []) if cached else []
+    key = f"{match.get('recommendedClass', '')}|{match.get('recommendedSubclass', '')}"
+    build = load_builds(conn).get(key)
+    return build_loadout(weapons_list, match, build)
 
 
 @app.get("/api/perks")
