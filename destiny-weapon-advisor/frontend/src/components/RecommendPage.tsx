@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fetchActivities, fetchRecommendations } from "../api";
 import { buildContextOptions } from "../recommend";
 import { ActivityRec, Recommendations } from "../types";
@@ -18,10 +18,11 @@ export function RecommendPage() {
 
   useEffect(() => {
     setError("");
+    setData(null);
     fetchRecommendations(context).then(setData).catch((e) => setError(String(e)));
   }, [context]);
 
-  const options = buildContextOptions(activities);
+  const options = useMemo(() => buildContextOptions(activities), [activities]);
 
   return (
     <div>
