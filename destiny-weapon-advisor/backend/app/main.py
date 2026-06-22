@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from app.bungie_client import (
     CLASS_TYPES, assemble_armor, assemble_weapons, equip_item,
-    get_profile, pull_from_postmaster, transfer_item,
+    get_memberships, get_profile, pull_from_postmaster, transfer_item,
 )
 from app.bungie_client import BungieApiError
 from app.bungie_oauth import refresh_tokens
@@ -27,7 +27,7 @@ from scripts.migrate import apply_migrations
 from app.auth import router as auth_router, get_current_user
 from app.bungie_session import valid_access_token
 from app.bungie_throttle import Throttle
-from app.repositories import cache, perk_ratings as perk_ratings_repo, builds as builds_repo, user_tables
+from app.repositories import cache, perk_ratings as perk_ratings_repo, builds as builds_repo, tokens, user_tables
 
 
 @asynccontextmanager
@@ -475,16 +475,22 @@ def _find_item_location(profile: dict, instance_id: str) -> str | None:
 
 
 @app.get("/api/memberships")
-async def list_memberships() -> dict:
+async def list_memberships(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
     settings = get_settings()
-    conn = get_conn(settings.db_path)
-    row = conn.execute("SELECT membership_type, membership_id FROM tokens WHERE id = 1").fetchone()
-    active = {"type": row[0], "id": row[1]} if row else None
+    uid = current_user["user_id"]
+    tok = await tokens.get_tokens(pool, uid, settings.token_enc_key)
+    active = {"type": tok["membership_type"], "id": tok["membership_id"]} if tok else None
     async with httpx.AsyncClient(
         timeout=30.0, headers={"X-API-Key": settings.bungie_api_key}
     ) as client:
-        access, _mt, _mid = await _valid_access_token(settings, conn, client)
-        memberships = await get_memberships(access, settings, client)
+        access, _mt, _mid = await valid_access_token(pool, uid, settings, client, settings.token_enc_key)
+        memberships = await request.app.state.throttle.run(
+            lambda: get_memberships(access, settings, client)
+        )
     out = [
         {"type": m["membershipType"], "id": m["membershipId"], "displayName": m.get("displayName", "")}
         for m in memberships["destinyMemberships"]
@@ -493,15 +499,15 @@ async def list_memberships() -> dict:
 
 
 @app.post("/api/memberships/select")
-def select_membership(body: MembershipSelectBody) -> dict:
-    conn = get_conn(get_settings().db_path)
-    conn.execute(
-        "UPDATE tokens SET membership_type = ?, membership_id = ? WHERE id = 1",
-        (body.membershipType, body.membershipId),
-    )
+async def select_membership(
+    body: MembershipSelectBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    await tokens.update_membership(pool, uid, body.membershipType, body.membershipId)
     for key in _ACCOUNT_CACHE_KEYS:
-        conn.execute("DELETE FROM kv WHERE key = ?", (key,))
-    conn.commit()
+        await cache.delete(pool, uid, key)
     return {"ok": True}
 
 
