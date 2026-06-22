@@ -35,13 +35,13 @@ function ArmorDetail({ a, rating }: { a: ArmorPiece; rating: Rating }) {
       <p style={{ margin: "0 0 4px" }}>
         <strong>Rating:</strong>{" "}
         <span style={{ color: rating.color, fontWeight: 600 }}>{rating.label}</span>{" "}
-        <span style={{ color: "#888", fontSize: 12 }}>(by total stats vs your best in this slot)</span>
+        <span style={{ color: "var(--muted)", fontSize: 12 }}>(by total stats vs your best in this slot)</span>
       </p>
       <h3 style={{ margin: "8px 0 6px" }}>Stats (total {total(a)})</h3>
       {Object.entries(a.stats).map(([name, value]) => (
         <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-          <span style={{ width: 90, fontSize: 12, color: "#555" }}>{name}</span>
-          <div style={{ flex: 1, background: "#eee", borderRadius: 3, height: 10 }}>
+          <span style={{ width: 90, fontSize: 12, color: "var(--muted)" }}>{name}</span>
+          <div style={{ flex: 1, background: "var(--track)", borderRadius: 3, height: 10 }}>
             <div style={{
               width: `${Math.min(100, (value / 50) * 100)}%`,
               background: "#1565c0", height: 10, borderRadius: 3,
@@ -137,7 +137,7 @@ export function ArmorList() {
   if (error) return <div style={{ color: "#c62828" }}>Error: {error}</div>;
   if (armor.length === 0)
     return (
-      <div style={{ color: "#666" }}>
+      <div style={{ color: "var(--muted)" }}>
         No armor yet — open the <strong>Weapons</strong> tab and <strong>Refresh</strong> first.
       </div>
     );
@@ -154,8 +154,8 @@ export function ArmorList() {
               key={t}
               onClick={() => setLocation(t)}
               style={{
-                padding: "6px 14px", borderRadius: 6, cursor: "pointer", border: "1px solid #d0d7de",
-                background: active ? "#1b2838" : "#fff", color: active ? "#fff" : "#333",
+                padding: "6px 14px", borderRadius: 6, cursor: "pointer", border: "1px solid var(--border)",
+                background: active ? "var(--accent)" : "var(--panel2)", color: active ? "#0a0e16" : "var(--text)",
                 fontWeight: active ? 700 : 400,
               }}
             >
@@ -186,7 +186,7 @@ export function ArmorList() {
         </select>
       </div>
       {selected && (
-        <div style={{ border: "1px solid #ccc", borderRadius: 8, padding: 16, marginBottom: 16 }}>
+        <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 16, marginBottom: 16 }}>
           <button onClick={() => setSelected(null)} style={{ float: "right" }}>Close</button>
           <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
             <Icon path={selected.icon} size={56} alt={selected.name}
@@ -195,7 +195,7 @@ export function ArmorList() {
               <h2 style={{ margin: "0 0 2px" }}>
                 {selected.name} {selected.isExotic && <span style={{ color: "#caa000" }}>◆</span>}
               </h2>
-              <p style={{ margin: 0, color: "#666" }}>
+              <p style={{ margin: 0, color: "var(--muted)" }}>
                 {selected.slot} · {selected.className} · {selected.location} · ✦{selected.power}
                 {selected.isMasterworked ? " · ★ Masterworked" : ""}
               </p>
@@ -206,7 +206,7 @@ export function ArmorList() {
             <TagSelect value={tags[selected.instanceId] || ""} onChange={(t) => setTag(selected.instanceId, t)} />
           </div>
           {characters.length > 0 && (
-            <div style={{ background: "#f6f8fa", borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>
+            <div style={{ background: "var(--panel2)", borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>
               <strong style={{ fontSize: 13 }}>Move to: </strong>
               {characters
                 .filter((c) => selected.className === "Any" || c.className === selected.className)
@@ -233,9 +233,9 @@ export function ArmorList() {
           <ArmorDetail a={selected} rating={rate(selected, maxBySlot[selected.slot] || 0)} />
         </div>
       )}
-      <p style={{ color: "#666" }}>{shown.length} of {armor.length} pieces</p>
+      <p style={{ color: "var(--muted)" }}>{shown.length} of {armor.length} pieces</p>
       {shown.length === 0 && (
-        <p style={{ color: "#999" }}>No armor matches your current tab/filters.</p>
+        <p style={{ color: "var(--muted)" }}>No armor matches your current tab/filters.</p>
       )}
       <div style={{
         display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
@@ -245,8 +245,8 @@ export function ArmorList() {
             key={a.instanceId}
             onClick={() => setSelected(a)}
             style={{
-              display: "flex", gap: 10, alignItems: "flex-start",
-              border: "1px solid #ddd", borderRadius: 8, padding: 10, cursor: "pointer",
+              display: "flex", gap: 10, alignItems: "flex-start", background: "var(--panel)",
+              border: "1px solid var(--border)", borderRadius: 8, padding: 10, cursor: "pointer",
               borderLeft: `6px solid ${r.color}`,
             }}
           >
@@ -261,11 +261,11 @@ export function ArmorList() {
                   <span style={{ color: r.color, fontWeight: 600 }}>{r.label}</span>
                 </span>
               </div>
-              <div style={{ fontSize: 12, color: "#666" }}>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>
                 {a.slot} · {a.location}{a.isMasterworked ? " · ★" : ""} · ✦{a.power}
                 {a.equipped && <span style={{ color: "#2e7d32", fontWeight: 600 }}> · equipped</span>}
               </div>
-              <div style={{ fontSize: 12, color: "#333", marginTop: 2 }}>Total {total(a)}</div>
+              <div style={{ fontSize: 12, color: "var(--text)", marginTop: 2 }}>Total {total(a)}</div>
             </div>
           </div>
         ))}

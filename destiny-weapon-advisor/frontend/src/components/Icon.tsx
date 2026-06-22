@@ -10,7 +10,7 @@ export function Icon({
 }) {
   const style = {
     width: size, height: size, borderRadius: 4, flexShrink: 0,
-    border: border ? `2px solid ${border}` : "1px solid #ddd", boxSizing: "border-box" as const,
+    border: border ? `2px solid ${border}` : "1px solid var(--border)", boxSizing: "border-box" as const,
     objectFit: "cover" as const, background: "#1b2838",
   };
   if (!path) return <div style={style} />;

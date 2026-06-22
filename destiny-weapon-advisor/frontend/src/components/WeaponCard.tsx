@@ -17,8 +17,8 @@ export function WeaponCard({ w, tag, onClick }: { w: WeaponDto; tag?: string; on
     <div
       onClick={onClick}
       style={{
-        display: "flex", gap: 10, alignItems: "flex-start",
-        border: "1px solid #ddd", borderRadius: 8, padding: 10, cursor: "pointer",
+        display: "flex", gap: 10, alignItems: "flex-start", background: "var(--panel)",
+        border: "1px solid var(--border)", borderRadius: 8, padding: 10, cursor: "pointer",
         borderLeft: `6px solid ${badge.color}`,
       }}
     >
@@ -33,7 +33,7 @@ export function WeaponCard({ w, tag, onClick }: { w: WeaponDto; tag?: string; on
             <span style={{ color: badge.color, fontWeight: 600 }}>{badge.label}</span>
           </span>
         </div>
-        <div style={{ fontSize: 12, color: "#666", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 12, color: "var(--muted)", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
           <span>{w.weaponType}</span>
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: elementColor(w.element), display: "inline-block" }} />
           <span>{w.element}</span>
@@ -42,7 +42,7 @@ export function WeaponCard({ w, tag, onClick }: { w: WeaponDto; tag?: string; on
           {w.isMasterworked && <span>· ★</span>}
           {w.equipped && <span style={{ color: "#2e7d32", fontWeight: 600 }}>· equipped</span>}
         </div>
-        <div style={{ fontSize: 12, color: "#333", marginTop: 2 }}>
+        <div style={{ fontSize: 12, color: "var(--text)", marginTop: 2 }}>
           {w.power > 0 && <span style={{ fontWeight: 600 }}>✦ {w.power}</span>}
           {w.frame && <span> · {w.frame}</span>}
         </div>

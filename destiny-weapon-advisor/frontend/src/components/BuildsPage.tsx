@@ -29,8 +29,8 @@ const LONG = new Set(["fragments", "weapons", "playstyle"]);
 
 function tabStyle(active: boolean) {
   return {
-    padding: "6px 14px", borderRadius: 6, cursor: "pointer", border: "1px solid #d0d7de",
-    background: active ? "#1b2838" : "#fff", color: active ? "#fff" : "#333",
+    padding: "6px 14px", borderRadius: 6, cursor: "pointer", border: "1px solid var(--border)",
+    background: active ? "var(--accent)" : "var(--panel2)", color: active ? "#0a0e16" : "var(--text)",
     fontWeight: active ? 700 : 400,
   } as const;
 }
@@ -92,7 +92,7 @@ export function BuildsPage() {
   return (
     <div>
       <h1 style={{ marginTop: 0 }}>Builds</h1>
-      <p style={{ color: "#666", maxWidth: 760 }}>
+      <p style={{ color: "var(--muted)", maxWidth: 760 }}>
         A starting build for each class + subclass, seeded from general knowledge.{" "}
         <em>Verify against the current season</em> and edit to taste — your edits are saved locally.
         The armor optimizer below picks the best gear for the stats this build wants.
@@ -109,7 +109,7 @@ export function BuildsPage() {
         ))}
       </div>
 
-      <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16, marginBottom: 28, maxWidth: 760 }}>
+      <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 16, marginBottom: 28, maxWidth: 760 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <h2 style={{ margin: 0 }}>{cls} · {subclass}</h2>
           <button onClick={save} disabled={!dirty} style={{ padding: "4px 16px" }}>
@@ -118,7 +118,7 @@ export function BuildsPage() {
         </div>
         {FIELDS.map(([field, label]) => (
           <div key={field} style={{ marginBottom: 8 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#555", marginBottom: 2 }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--muted)", marginBottom: 2 }}>
               {label}
             </label>
             {LONG.has(field) ? (
@@ -143,7 +143,7 @@ export function BuildsPage() {
         Your best weapons{SUBCLASS_ELEMENT[subclass] ? ` for ${subclass}` : ""}
       </h2>
       {bestWeapons.length === 0 ? (
-        <p style={{ color: "#888" }}>
+        <p style={{ color: "var(--muted)" }}>
           No god-roll / upgrade {SUBCLASS_ELEMENT[subclass]} (or Kinetic) weapons found in your
           inventory yet. Load the Weapons tab and rate some perks.
         </p>
@@ -155,14 +155,14 @@ export function BuildsPage() {
           {bestWeapons.map((w) => (
             <div key={w.instanceId} style={{
               display: "flex", gap: 8, alignItems: "center",
-              border: "1px solid #eee", borderRadius: 6, padding: 8,
+              border: "1px solid var(--border)", borderRadius: 6, padding: 8,
             }}>
               <Icon path={w.icon} size={36} alt={w.name} />
               <div style={{ minWidth: 0 }}>
                 <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {w.name}
                 </strong>
-                <span style={{ fontSize: 12, color: "#666" }}>
+                <span style={{ fontSize: 12, color: "var(--muted)" }}>
                   {w.weaponType} · <span style={{ color: elementColor(w.element) }}>{w.element}</span>
                   {" · "}{w.verdict.replace("_", " ")}
                 </span>

@@ -99,7 +99,7 @@ export function WeaponGrid() {
         <button onClick={() => load(true)} disabled={refreshing}>
           {refreshing ? "Refreshing…" : "↻ Refresh"}
         </button>
-        <span style={{ color: "#888", fontSize: 13 }}>
+        <span style={{ color: "var(--muted)", fontSize: 13 }}>
           {cachedAt ? `Last refreshed ${sinceText(cachedAt)}` : "Showing cached data"}
         </span>
       </div>
@@ -113,9 +113,9 @@ export function WeaponGrid() {
               onClick={() => setLocation(t)}
               style={{
                 padding: "6px 14px", borderRadius: 6, cursor: "pointer",
-                border: "1px solid #d0d7de",
-                background: active ? "#1b2838" : "#fff",
-                color: active ? "#fff" : "#333", fontWeight: active ? 700 : 400,
+                border: "1px solid var(--border)",
+                background: active ? "var(--accent)" : "var(--panel2)",
+                color: active ? "#0a0e16" : "var(--text)", fontWeight: active ? 700 : 400,
               }}
             >
               {t}{ch ? ` ✦${ch.light}` : ""}
@@ -125,14 +125,14 @@ export function WeaponGrid() {
       </div>
       {characters.length > 0 && shown.length > 0 && (
         <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8, fontSize: 13 }}>
-          <span style={{ color: "#666" }}>Move all {shown.length} shown to:</span>
+          <span style={{ color: "var(--muted)" }}>Move all {shown.length} shown to:</span>
           {characters.map((c) => (
             <button key={c.id} disabled={bulkBusy} onClick={() => bulkMoveTo(c.id, c.className)}
               style={{ padding: "2px 8px" }}>{c.className}</button>
           ))}
           <button disabled={bulkBusy} onClick={() => bulkMoveTo("vault", "Vault")}
             style={{ padding: "2px 8px" }}>Vault</button>
-          {bulkBusy && <span style={{ color: "#888" }}>moving…</span>}
+          {bulkBusy && <span style={{ color: "var(--muted)" }}>moving…</span>}
         </div>
       )}
       <div style={{ marginBottom: 8 }}>
@@ -153,9 +153,9 @@ export function WeaponGrid() {
           onMoved={() => { load(false); setSelected(null); }}
         />
       )}
-      <p style={{ color: "#666" }}>{shown.length} of {weapons.length} weapons</p>
+      <p style={{ color: "var(--muted)" }}>{shown.length} of {weapons.length} weapons</p>
       {shown.length === 0 && (
-        <p style={{ color: "#999" }}>No weapons match your current tab/filters.</p>
+        <p style={{ color: "var(--muted)" }}>No weapons match your current tab/filters.</p>
       )}
       <div
         style={{

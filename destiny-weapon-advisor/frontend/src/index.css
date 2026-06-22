@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+:root {
+  --bg: #0a0e16;
+  --bg2: #0e1420;
+  --panel: #141c29;
+  --panel2: #1c2535;
+  --border: #2a3750;
+  --track: #1f2a3d;
+  --text: #e8eef5;
+  --muted: #93a4ba;
+  --faint: #5e6e85;
+  --accent: #f2c25b;
+  --accent-dim: #b98f33;
+  --danger: #ff6b6b;
+  --good: #5bd17a;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(1200px 600px at 72% -12%, rgba(242, 194, 91, 0.08), transparent 60%),
+    radial-gradient(900px 520px at 8% -5%, rgba(110, 168, 255, 0.06), transparent 55%),
+    linear-gradient(180deg, #0b1019, #0a0e16 55%);
+  background-attachment: fixed;
+}
+
+h1, h2, h3 { font-family: 'Chakra Petch', sans-serif; letter-spacing: 0.01em; color: var(--text); }
+h1 { font-weight: 700; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+strong { color: var(--text); }
+em { color: var(--muted); }
+
+button {
+  font-family: 'Chakra Petch', sans-serif; font-size: 13px; font-weight: 600;
+  background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 12px; cursor: pointer; transition: border-color .12s ease, color .12s ease;
+}
+button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+button:disabled { opacity: 0.45; cursor: default; }
+
+input, select, textarea {
+  font-family: inherit; font-size: 13px;
+  background: var(--bg2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;
+}
+input::placeholder { color: var(--faint); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+option { background: var(--bg2); color: var(--text); }
+
+table { color: var(--text); }
+th { color: var(--muted); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #26344b; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #33455f; }
+::-webkit-scrollbar-track { background: transparent; }
