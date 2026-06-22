@@ -7,6 +7,7 @@ import { LoadoutsPage } from "./components/LoadoutsPage";
 import { Login } from "./components/Login";
 import { Nav, Section } from "./components/Nav";
 import { PerksPage } from "./components/PerksPage";
+import { RecommendPage } from "./components/RecommendPage";
 import { WeaponGrid } from "./components/WeaponGrid";
 
 export default function App() {
@@ -30,6 +31,7 @@ export default function App() {
             <WeaponGrid />
           </>
         )}
+        {section === "recommend" && <RecommendPage />}
         {section === "perks" && <PerksPage />}
         {section === "armor" && <ArmorList />}
         {section === "builds" && <BuildsPage />}

@@ -20,6 +20,7 @@ from app.config import get_settings
 from app.manifest import Manifest, load_cached_manifest, load_manifest
 from app.perk_ratings import TIER_SCORE, load_ratings, save_rating
 from app.perk_scoring import score_by_perks
+from app.recommend import element_for_subclass, recommend_weapons
 from app.storage import get_conn, kv_get, kv_set
 
 app = FastAPI(title="Destiny 2 Weapon Advisor")
@@ -294,6 +295,32 @@ async def weapons(refresh: bool = False) -> dict:
     kv_set(conn, "profile_cache", json.dumps(profile))
     kv_set(conn, "profile_membership_id", mid)
     return _compute_weapons(conn, manifest, profile)
+
+
+def _resolve_rec_context(conn, context: str) -> dict:
+    if context == "general-pve":
+        return {"label": "General (PvE)", "element": None}
+    if context == "general-pvp":
+        return {"label": "General (PvP)", "element": None}
+    for activity in load_activities(conn):
+        if activity.get("name") == context:
+            return {
+                "label": activity["name"],
+                "element": element_for_subclass(activity.get("recommendedSubclass", "")),
+            }
+    return {"label": context, "element": None}
+
+
+@app.get("/api/recommendations")
+def recommendations(context: str = "general-pve") -> dict:
+    settings = get_settings()
+    conn = get_conn(settings.db_path)
+    cached = kv_get(conn, "weapons_cache")
+    if not cached and _recompute_from_cache(conn):
+        cached = kv_get(conn, "weapons_cache")
+    weapons_list = json.loads(cached).get("weapons", []) if cached else []
+    ctx = _resolve_rec_context(conn, context)
+    return recommend_weapons(weapons_list, ctx)
 
 
 @app.get("/api/perks")

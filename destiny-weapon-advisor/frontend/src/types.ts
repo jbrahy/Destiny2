@@ -113,3 +113,10 @@ export interface WeaponTypePerks {
   weaponType: string;
   perks: CatalogPerk[];
 }
+
+export type RecommendedWeapon = WeaponDto & { recommendReason: string };
+
+export interface Recommendations {
+  context: string;
+  slots: Record<"Primary" | "Special" | "Heavy", RecommendedWeapon[]>;
+}

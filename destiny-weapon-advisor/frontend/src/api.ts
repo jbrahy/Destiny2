@@ -1,6 +1,6 @@
 import {
   ActivityRec, ArmorPiece, Build, Character, Loadout, LoadoutItem, Membership, MoveResult,
-  PostmasterItem, WeaponDto, WeaponTypePerks,
+  PostmasterItem, Recommendations, WeaponDto, WeaponTypePerks,
 } from "./types";
 
 export const loginUrl = "/api/login";
@@ -206,4 +206,10 @@ export async function pullPostmaster(item: PostmasterItem): Promise<void> {
     const data = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
     throw new Error(data.detail || `Pull failed (${res.status})`);
   }
+}
+
+export async function fetchRecommendations(context: string): Promise<Recommendations> {
+  const res = await fetch(`/api/recommendations?context=${encodeURIComponent(context)}`);
+  if (!res.ok) throw new Error(`Failed to load recommendations (${res.status})`);
+  return (await res.json()) as Recommendations;
 }
