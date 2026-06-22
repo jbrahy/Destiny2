@@ -19,7 +19,7 @@ from app.config import get_settings
 from app import db
 from app.deps import get_pool
 from app.manifest import Manifest, load_cached_manifest, load_manifest
-from app.perk_ratings import TIER_SCORE, load_ratings, save_rating
+from app.perk_ratings import TIER_SCORE
 from app.perk_scoring import score_by_perks
 from app.recommend import element_for_subclass, recommend_weapons
 from app.loadout_builder import build_loadout
@@ -290,14 +290,17 @@ async def loadout_suggestion(
 
 
 @app.get("/api/perks")
-def get_perks() -> dict:
-    conn = get_conn(get_settings().db_path)
-    ratings = load_ratings(conn)
-    desc_raw = kv_get(conn, "perk_desc_map")
+async def get_perks(
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    ratings = await perk_ratings_repo.load(pool, uid)
+    desc_raw = await cache.get(pool, uid, "perk_desc_map")
     descriptions = json.loads(desc_raw) if desc_raw else {}
-    icon_raw = kv_get(conn, "perk_icon_map")
+    icon_raw = await cache.get(pool, uid, "perk_icon_map")
     icons = json.loads(icon_raw) if icon_raw else {}
-    cached = kv_get(conn, "weapons_cache")
+    cached = await cache.get(pool, uid, "weapons_cache")
     by_type: dict[str, set] = {}
     if cached:
         for w in json.loads(cached)["weapons"]:
@@ -325,12 +328,16 @@ def get_perks() -> dict:
 
 
 @app.put("/api/perks")
-def put_perk(body: PerkRatingBody) -> dict:
-    conn = get_conn(get_settings().db_path)
-    save_rating(
-        conn, body.name, body.weaponType, body.rating, body.reason, body.tags, body.notes
+async def put_perk(
+    body: PerkRatingBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    uid = current_user["user_id"]
+    await perk_ratings_repo.save(
+        pool, uid, body.name, body.weaponType, body.rating, body.reason, body.tags, body.notes
     )
-    _recompute_from_cache(conn)
+    await _recompute_from_cache(pool, uid)
     return {"ok": True}
 
 
