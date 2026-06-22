@@ -19,7 +19,7 @@ def explain_verdict(
         return (f"{len(strong)} A/S-tier perk(s) ({names}) but not masterworked.",
                 "Masterwork it → God Roll.")
     if verdict == Verdict.GOOD:
-        best = rated[0] if rated else None
+        best = max(rated, key=lambda r: TIER_SCORE.get(r["rating"], 0)) if rated else None
         reason = (
             f"Best perk is {best['rating']}-tier ({best['name']}); "
             "no S-tier and fewer than two A/S perks."
