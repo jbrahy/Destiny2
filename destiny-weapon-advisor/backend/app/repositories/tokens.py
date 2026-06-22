@@ -68,6 +68,11 @@ async def get_tokens(pool, user_id: int, key: str) -> dict | None:
     }
 
 
+async def delete(pool, user_id: int) -> None:
+    """Delete the token row for user_id (used on refresh failure)."""
+    await db.execute(pool, "DELETE FROM user_tokens WHERE user_id=%s", (user_id,))
+
+
 async def update_membership(
     pool,
     user_id: int,
