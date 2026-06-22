@@ -23,7 +23,7 @@ export default function App() {
 
   return (
     <div style={{ fontFamily: "system-ui, sans-serif" }}>
-      <Nav current={section} onChange={setSection} />
+      <Nav current={section} onChange={setSection} onLogout={() => setAuthed(false)} />
       <div style={{ padding: 24 }}>
         {section === "weapons" && (
           <>

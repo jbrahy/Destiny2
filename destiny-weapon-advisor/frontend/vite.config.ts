@@ -10,4 +10,7 @@ export default defineConfig({
       "/callback": { target: "https://localhost:8443", changeOrigin: true, secure: false },
     },
   },
+  test: {
+    environment: "jsdom",
+  },
 });

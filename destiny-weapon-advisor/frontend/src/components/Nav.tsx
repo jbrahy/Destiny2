@@ -1,3 +1,4 @@
+import { logout } from "../api";
 import { AccountSwitcher } from "./AccountSwitcher";
 import { VaultCounts } from "./VaultCounts";
 
@@ -13,7 +14,22 @@ export const SECTIONS: { id: Section; label: string }[] = [
   { id: "loadouts", label: "Loadouts" },
 ];
 
-export function Nav({ current, onChange }: { current: Section; onChange: (s: Section) => void }) {
+export function Nav({
+  current, onChange, onLogout,
+}: {
+  current: Section;
+  onChange: (s: Section) => void;
+  onLogout?: () => void;
+}) {
+  function handleLogout() {
+    logout()
+      .catch(() => {/* ignore errors — redirect regardless */})
+      .finally(() => {
+        if (onLogout) onLogout();
+        else window.location.href = "/";
+      });
+  }
+
   return (
     <header
       style={{
@@ -59,6 +75,16 @@ export function Nav({ current, onChange }: { current: Section; onChange: (s: Sec
       >
         Re-login
       </a>
+      <button
+        onClick={handleLogout}
+        title="Sign out"
+        style={{
+          background: "transparent", border: "1px solid var(--border)", borderRadius: 4,
+          color: "var(--muted)", fontSize: 12, padding: "4px 10px", cursor: "pointer",
+        }}
+      >
+        Sign out
+      </button>
     </header>
   );
 }
