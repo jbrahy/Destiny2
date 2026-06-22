@@ -1,24 +1,23 @@
 import json
 import os
-import secrets
 import time
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.bungie_client import (
-    CLASS_TYPES, assemble_armor, assemble_weapons, equip_item, get_memberships,
+    CLASS_TYPES, assemble_armor, assemble_weapons, equip_item,
     get_profile, pull_from_postmaster, transfer_item,
 )
 from app.bungie_client import BungieApiError
-from app.bungie_oauth import build_authorize_url, exchange_code, refresh_tokens
+from app.bungie_oauth import refresh_tokens
 from app.builds import load_activities, load_builds, save_activity, save_build
 from app.config import get_settings
 from app import db
+from app.deps import get_pool
 from app.manifest import Manifest, load_cached_manifest, load_manifest
 from app.perk_ratings import TIER_SCORE, load_ratings, save_rating
 from app.perk_scoring import score_by_perks
@@ -26,6 +25,7 @@ from app.recommend import element_for_subclass, recommend_weapons
 from app.loadout_builder import build_loadout
 from app.storage import get_conn, kv_get, kv_set
 from scripts.migrate import apply_migrations
+from app.auth import router as auth_router, get_current_user
 
 
 @asynccontextmanager
@@ -38,15 +38,8 @@ async def lifespan(app: FastAPI):
     await pool.wait_closed()
 
 
-def get_pool(request: Request):
-    return request.app.state.pool
-
-
 app = FastAPI(title="Destiny 2 Weapon Advisor", lifespan=lifespan)
-
-# In-memory OAuth CSRF nonces. Process-local: a restart between /api/login and
-# /callback invalidates pending logins (acceptable for a local single-user tool).
-_states: set[str] = set()
+app.include_router(auth_router)
 
 # Every cache key derived from a single account's profile. Cleared together on
 # account switch so no cross-account data can survive (keep this list complete).
@@ -127,77 +120,6 @@ class PullPostmasterBody(BaseModel):
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
-
-@app.get("/api/status")
-def status() -> dict[str, bool]:
-    conn = get_conn(get_settings().db_path)
-    row = conn.execute("SELECT access_token FROM tokens WHERE id = 1").fetchone()
-    return {"authenticated": bool(row and row[0])}
-
-
-@app.get("/api/login")
-def login() -> RedirectResponse:
-    settings = get_settings()
-    state = secrets.token_urlsafe(16)
-    _states.add(state)
-    url = build_authorize_url(settings.bungie_client_id, settings.redirect_uri, state)
-    return RedirectResponse(url, status_code=307)
-
-
-async def _pick_membership(memberships: dict, access: str, settings, client) -> dict:
-    """Choose which Destiny account to use: the cross-save primary if set,
-    otherwise the account whose most-recently-played character is the newest."""
-    destiny_memberships = memberships["destinyMemberships"]
-    primary_id = memberships.get("primaryMembershipId")
-    primary = next((m for m in destiny_memberships if m.get("membershipId") == primary_id), None)
-    if primary is not None:
-        return primary
-    best, best_date, validated = destiny_memberships[0], "", False
-    for m in destiny_memberships:
-        try:
-            prof = await get_profile(m["membershipType"], m["membershipId"], access, settings, client)
-        except Exception:
-            continue
-        dates = [
-            c.get("dateLastPlayed", "")
-            for c in prof.get("characters", {}).get("data", {}).values()
-        ]
-        latest = max(dates) if dates else ""
-        # First successfully-fetched account wins by default (don't let an
-        # unvalidated [0] beat a real account whose fetch succeeded).
-        if not validated or latest > best_date:
-            best, best_date, validated = m, latest, True
-    return best
-
-
-@app.get("/callback")
-async def callback(code: str, state: str) -> RedirectResponse:
-    if state not in _states:
-        raise HTTPException(status_code=400, detail="Invalid OAuth state")
-    _states.discard(state)
-    settings = get_settings()
-    conn = get_conn(settings.db_path)
-    async with httpx.AsyncClient(
-        timeout=30.0, headers={"X-API-Key": settings.bungie_api_key}
-    ) as client:
-        tokens = await exchange_code(code, settings, client)
-        access = tokens["access_token"]
-        memberships = await get_memberships(access, settings, client)
-        primary = await _pick_membership(memberships, access, settings, client)
-    conn.execute("DELETE FROM tokens")
-    conn.execute(
-        "INSERT INTO tokens (id, access_token, refresh_token, expires_at, "
-        "membership_type, membership_id) VALUES (1, ?, ?, ?, ?, ?)",
-        (
-            access,
-            tokens["refresh_token"],
-            time.time() + tokens["expires_in"],
-            primary["membershipType"],
-            primary["membershipId"],
-        ),
-    )
-    conn.commit()
-    return RedirectResponse(settings.frontend_url, status_code=307)
 
 
 async def _valid_access_token(settings, conn, client) -> tuple[str, int, str]:
@@ -308,7 +230,7 @@ def _recompute_from_cache(conn) -> bool:
 
 
 @app.get("/api/weapons")
-async def weapons(refresh: bool = False) -> dict:
+async def weapons(refresh: bool = False, current_user: dict = Depends(get_current_user)) -> dict:
     settings = get_settings()
     conn = get_conn(settings.db_path)
     if not refresh:

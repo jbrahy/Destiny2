@@ -6,6 +6,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import pytest
 import pytest_asyncio
 import aiomysql
+from asgi_lifespan import LifespanManager
+from httpx import AsyncClient, ASGITransport
 
 from app.config import get_settings
 from scripts.migrate import apply_migrations
@@ -66,3 +68,15 @@ async def clean_db(db_pool):
             await cur.execute("SET FOREIGN_KEY_CHECKS=1")
         await conn.commit()
     yield db_pool
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def app_client(clean_db):
+    """ASGI test client with cookies; pool overridden to the test DB."""
+    from app.main import app
+    async with LifespanManager(app):
+        app.state.pool = clean_db
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as client:
+            yield client
