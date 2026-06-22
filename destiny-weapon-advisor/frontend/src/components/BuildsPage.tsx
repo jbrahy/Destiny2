@@ -1,7 +1,15 @@
-import { useEffect, useState } from "react";
-import { fetchBuilds, saveBuild } from "../api";
-import { Build } from "../types";
+import { useEffect, useMemo, useState } from "react";
+import { fetchBuilds, fetchWeapons, saveBuild } from "../api";
+import { Build, WeaponDto } from "../types";
 import { ArmorPage } from "./ArmorPage";
+import { Icon } from "./Icon";
+import { elementColor } from "../visual";
+
+// Subclass element → matching weapon element ("" = Prismatic / no constraint).
+const SUBCLASS_ELEMENT: Record<string, string> = {
+  Solar: "Solar", Arc: "Arc", Void: "Void", Stasis: "Stasis", Strand: "Strand", Prismatic: "",
+};
+const VERDICT_RANK: Record<string, number> = { god_roll: 0, upgrade: 1, good: 2 };
 
 const CLASSES = ["Titan", "Hunter", "Warlock"];
 const SUBCLASSES = ["Solar", "Arc", "Void", "Stasis", "Strand", "Prismatic"];
@@ -36,12 +44,24 @@ export function BuildsPage() {
   const [draft, setDraft] = useState<Build>({});
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [weapons, setWeapons] = useState<WeaponDto[]>([]);
 
   const key = `${cls}|${subclass}`;
 
   useEffect(() => {
     fetchBuilds().then(setBuilds).catch((e) => setError(e.message)).finally(() => setLoading(false));
+    fetchWeapons().then((r) => setWeapons(r.weapons)).catch(() => setWeapons([]));
   }, []);
+
+  const bestWeapons = useMemo(() => {
+    const el = SUBCLASS_ELEMENT[subclass];
+    return weapons
+      .filter((w) => w.verdict === "god_roll" || w.verdict === "upgrade")
+      .filter((w) => el === "" || w.element === el || w.element === "Kinetic")
+      .sort((a, b) =>
+        (VERDICT_RANK[a.verdict] ?? 9) - (VERDICT_RANK[b.verdict] ?? 9) || b.power - a.power)
+      .slice(0, 8);
+  }, [weapons, subclass]);
 
   useEffect(() => {
     setDraft(builds[key] || {});
@@ -118,6 +138,39 @@ export function BuildsPage() {
           </div>
         ))}
       </div>
+
+      <h2 style={{ marginTop: 0 }}>
+        Your best weapons{SUBCLASS_ELEMENT[subclass] ? ` for ${subclass}` : ""}
+      </h2>
+      {bestWeapons.length === 0 ? (
+        <p style={{ color: "#888" }}>
+          No god-roll / upgrade {SUBCLASS_ELEMENT[subclass]} (or Kinetic) weapons found in your
+          inventory yet. Load the Weapons tab and rate some perks.
+        </p>
+      ) : (
+        <div style={{
+          display: "grid", gap: 8, marginBottom: 24,
+          gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+        }}>
+          {bestWeapons.map((w) => (
+            <div key={w.instanceId} style={{
+              display: "flex", gap: 8, alignItems: "center",
+              border: "1px solid #eee", borderRadius: 6, padding: 8,
+            }}>
+              <Icon path={w.icon} size={36} alt={w.name} />
+              <div style={{ minWidth: 0 }}>
+                <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {w.name}
+                </strong>
+                <span style={{ fontSize: 12, color: "#666" }}>
+                  {w.weaponType} · <span style={{ color: elementColor(w.element) }}>{w.element}</span>
+                  {" · "}{w.verdict.replace("_", " ")}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <h2 style={{ marginTop: 0 }}>Armor optimizer</h2>
       <ArmorPage />

@@ -64,16 +64,8 @@ def assemble_weapons(profile: dict, manifest: Manifest) -> list[OwnedWeapon]:
         cid: CLASS_TYPES.get(c.get("classType"), "Character") for cid, c in characters.items()
     }
 
-    raw: list[tuple[dict, str]] = []
-    pi = profile.get("profileInventory", {}).get("data", {}).get("items", [])
-    raw += [(item, "Vault") for item in pi]
-    for char_id, bucket in profile.get("characterInventories", {}).get("data", {}).items():
-        raw += [(item, char_id) for item in bucket.get("items", [])]
-    for char_id, bucket in profile.get("characterEquipment", {}).get("data", {}).items():
-        raw += [(item, char_id) for item in bucket.get("items", [])]
-
     weapons: list[OwnedWeapon] = []
-    for item, holder in raw:
+    for item, holder, equipped in _gather_items(profile):
         instance_id = item.get("itemInstanceId")
         item_hash = item.get("itemHash")
         if not instance_id or not manifest.is_weapon(item_hash):
@@ -114,6 +106,7 @@ def assemble_weapons(profile: dict, manifest: Manifest) -> list[OwnedWeapon]:
                 perk_names=perk_names,
                 stats=stats,
                 icon=manifest.icon(item_hash),
+                equipped=equipped,
             )
         )
     return weapons
@@ -122,13 +115,15 @@ def assemble_weapons(profile: dict, manifest: Manifest) -> list[OwnedWeapon]:
 _CLASS_ITEM_TYPES = {"Hunter Cloak", "Titan Mark", "Warlock Bond"}
 
 
-def _gather_items(profile: dict) -> list[tuple[dict, str]]:
-    raw: list[tuple[dict, str]] = []
-    raw += [(it, "Vault") for it in profile.get("profileInventory", {}).get("data", {}).get("items", [])]
+def _gather_items(profile: dict) -> list[tuple[dict, str, bool]]:
+    """Each (item, holder, equipped). holder is 'Vault' or a character id."""
+    raw: list[tuple[dict, str, bool]] = []
+    raw += [(it, "Vault", False)
+            for it in profile.get("profileInventory", {}).get("data", {}).get("items", [])]
     for cid, bucket in profile.get("characterInventories", {}).get("data", {}).items():
-        raw += [(it, cid) for it in bucket.get("items", [])]
+        raw += [(it, cid, False) for it in bucket.get("items", [])]
     for cid, bucket in profile.get("characterEquipment", {}).get("data", {}).items():
-        raw += [(it, cid) for it in bucket.get("items", [])]
+        raw += [(it, cid, True) for it in bucket.get("items", [])]
     return raw
 
 
@@ -142,7 +137,7 @@ def assemble_armor(profile: dict, manifest: Manifest) -> list[ArmorPiece]:
     }
 
     pieces: list[ArmorPiece] = []
-    for item, holder in _gather_items(profile):
+    for item, holder, equipped in _gather_items(profile):
         instance_id = item.get("itemInstanceId")
         item_hash = item.get("itemHash")
         if not instance_id or not manifest.is_armor(item_hash):
@@ -170,6 +165,7 @@ def assemble_armor(profile: dict, manifest: Manifest) -> list[ArmorPiece]:
                 stats=stats,
                 location="Vault" if holder == "Vault" else char_class.get(holder, "Character"),
                 icon=manifest.icon(item_hash),
+                equipped=equipped,
             )
         )
     return pieces

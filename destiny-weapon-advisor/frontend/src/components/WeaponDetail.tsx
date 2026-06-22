@@ -2,6 +2,7 @@ import { useState } from "react";
 import { moveItem } from "../api";
 import { Character, WeaponDto } from "../types";
 import { Icon } from "./Icon";
+import { TagSelect } from "./TagSelect";
 
 function StatBar({ name, value }: { name: string; value: number }) {
   // Only the 0–100 stats (Range, Stability, Handling…) get a meaningful bar.
@@ -23,10 +24,12 @@ function StatBar({ name, value }: { name: string; value: number }) {
 }
 
 export function WeaponDetail({
-  w, characters, onClose, onMoved,
+  w, characters, tag, onTag, onClose, onMoved,
 }: {
   w: WeaponDto;
   characters: Character[];
+  tag: string;
+  onTag: (t: string) => void;
   onClose: () => void;
   onMoved: () => void;
 }) {
@@ -70,6 +73,11 @@ export function WeaponDetail({
         {w.power > 0 && <strong>✦ {w.power} Power</strong>}
         {w.frame && <span> · {w.frame}</span>}
       </p>
+
+      <div style={{ marginBottom: 10 }}>
+        <strong style={{ fontSize: 13, marginRight: 6 }}>Tag:</strong>
+        <TagSelect value={tag} onChange={onTag} />
+      </div>
 
       {characters.length > 0 && (
         <div style={{ background: "#f6f8fa", borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>

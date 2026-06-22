@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchArmor, fetchCharacters, moveItem } from "../api";
+import { fetchArmor, fetchCharacters, fetchTags, moveItem, saveTag } from "../api";
 import { ArmorPiece, Character } from "../types";
+import { matchArmor, parseQuery } from "../search";
+import { TAGS } from "../visual";
 import { Icon } from "./Icon";
+import { TagChip, TagSelect } from "./TagSelect";
 
 const SLOTS = ["Helmet", "Gauntlets", "Chest Armor", "Leg Armor", "Class Item"];
 
@@ -60,6 +63,8 @@ export function ArmorList() {
   const [slot, setSlot] = useState("all");
   const [ratingFilter, setRatingFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [tags, setTags] = useState<Record<string, string>>({});
+  const [tagFilter, setTagFilter] = useState("all");
   const [selected, setSelected] = useState<ArmorPiece | null>(null);
   const [equip, setEquip] = useState(false);
   const [moving, setMoving] = useState(false);
@@ -71,7 +76,15 @@ export function ArmorList() {
       .catch((e) => setError(e.message));
   }
 
-  useEffect(() => { load().finally(() => setLoading(false)); }, []);
+  function setTag(instanceId: string, tag: string) {
+    setTags((t) => ({ ...t, [instanceId]: tag }));
+    saveTag(instanceId, tag).catch(() => {});
+  }
+
+  useEffect(() => {
+    load().finally(() => setLoading(false));
+    fetchTags().then(setTags).catch(() => setTags({}));
+  }, []);
   useEffect(() => { setMoveMsg(null); }, [selected]);
 
   async function doMove(target: Character) {
@@ -104,6 +117,8 @@ export function ArmorList() {
 
   const tabs = useMemo(() => ["All", ...characters.map((c) => c.className), "Vault"], [characters]);
 
+  const terms = useMemo(() => parseQuery(search), [search]);
+
   const shown = useMemo(
     () =>
       armor
@@ -111,10 +126,11 @@ export function ArmorList() {
         .filter(({ a }) => location === "All" || a.location === location)
         .filter(({ a }) => slot === "all" || a.slot === slot)
         .filter(({ r }) => ratingFilter === "all" || r.label === ratingFilter)
-        .filter(({ a }) => a.name.toLowerCase().includes(search.toLowerCase()))
+        .filter(({ a }) => tagFilter === "all" || (tags[a.instanceId] || "") === tagFilter)
+        .filter(({ a, r }) => matchArmor(a, tags[a.instanceId] || "", r.label, terms))
         .sort((x, y) =>
           SLOTS.indexOf(x.a.slot) - SLOTS.indexOf(y.a.slot) || total(y.a) - total(x.a)),
-    [armor, maxBySlot, location, slot, ratingFilter, search],
+    [armor, maxBySlot, location, slot, ratingFilter, tags, tagFilter, terms],
   );
 
   if (loading) return <div>Loading armor…</div>;
@@ -149,7 +165,8 @@ export function ArmorList() {
         })}
       </div>
       <div style={{ display: "flex", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
-        <input placeholder="Search name…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input placeholder="Search… e.g. is:exotic slot:helmet rating:top" value={search}
+          onChange={(e) => setSearch(e.target.value)} style={{ minWidth: 260 }} />
         <select value={ratingFilter} onChange={(e) => setRatingFilter(e.target.value)}>
           <option value="all">All ratings</option>
           <option value="Exotic">Exotic</option>
@@ -161,6 +178,11 @@ export function ArmorList() {
         <select value={slot} onChange={(e) => setSlot(e.target.value)}>
           <option value="all">All slots</option>
           {SLOTS.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
+          <option value="all">All tags</option>
+          <option value="">Untagged</option>
+          {TAGS.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
       </div>
       {selected && (
@@ -178,6 +200,10 @@ export function ArmorList() {
                 {selected.isMasterworked ? " · ★ Masterworked" : ""}
               </p>
             </div>
+          </div>
+          <div style={{ marginBottom: 10 }}>
+            <strong style={{ fontSize: 13, marginRight: 6 }}>Tag:</strong>
+            <TagSelect value={tags[selected.instanceId] || ""} onChange={(t) => setTag(selected.instanceId, t)} />
           </div>
           {characters.length > 0 && (
             <div style={{ background: "#f6f8fa", borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>
@@ -230,10 +256,14 @@ export function ArmorList() {
                 <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {a.name}{a.isExotic ? " ◆" : ""}
                 </strong>
-                <span style={{ color: r.color, fontWeight: 600, whiteSpace: "nowrap" }}>{r.label}</span>
+                <span style={{ display: "flex", gap: 6, alignItems: "center", whiteSpace: "nowrap" }}>
+                  <TagChip tag={tags[a.instanceId]} />
+                  <span style={{ color: r.color, fontWeight: 600 }}>{r.label}</span>
+                </span>
               </div>
               <div style={{ fontSize: 12, color: "#666" }}>
                 {a.slot} · {a.location}{a.isMasterworked ? " · ★" : ""} · ✦{a.power}
+                {a.equipped && <span style={{ color: "#2e7d32", fontWeight: 600 }}> · equipped</span>}
               </div>
               <div style={{ fontSize: 12, color: "#333", marginTop: 2 }}>Total {total(a)}</div>
             </div>

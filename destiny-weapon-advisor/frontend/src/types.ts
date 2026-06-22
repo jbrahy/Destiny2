@@ -12,6 +12,7 @@ export interface ArmorPiece {
   stats: Record<string, number>;
   location: string;
   icon: string;
+  equipped: boolean;
 }
 
 export type Build = Record<string, string>;
@@ -59,6 +60,7 @@ export interface WeaponDto {
   stats: Record<string, number>;
   ratedPerks: RatedPerk[];
   icon: string;
+  equipped: boolean;
 }
 
 export interface RatedPerk {

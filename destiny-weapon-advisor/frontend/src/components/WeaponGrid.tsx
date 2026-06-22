@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchCharacters, fetchWeapons } from "../api";
+import { fetchCharacters, fetchTags, fetchWeapons, saveTag } from "../api";
 import { Character, Verdict, WeaponDto } from "../types";
+import { matchWeapon, parseQuery } from "../search";
+import { TAGS } from "../visual";
 import { FilterState, Filters } from "./Filters";
 import { WeaponCard } from "./WeaponCard";
 import { WeaponDetail } from "./WeaponDetail";
@@ -26,9 +28,16 @@ export function WeaponGrid() {
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<WeaponDto | null>(null);
   const [location, setLocation] = useState("All");
+  const [tags, setTags] = useState<Record<string, string>>({});
+  const [tagFilter, setTagFilter] = useState("all");
   const [filters, setFilters] = useState<FilterState>({
     verdict: "all", weaponType: "all", search: "",
   });
+
+  function setTag(instanceId: string, tag: string) {
+    setTags((t) => ({ ...t, [instanceId]: tag }));
+    saveTag(instanceId, tag).catch(() => {});
+  }
 
   function load(refresh: boolean) {
     if (refresh) setRefreshing(true);
@@ -42,6 +51,7 @@ export function WeaponGrid() {
   useEffect(() => {
     load(false);
     fetchCharacters().then(setCharacters).catch(() => setCharacters([]));
+    fetchTags().then(setTags).catch(() => setTags({}));
   }, []);
 
   const types = useMemo(
@@ -54,14 +64,17 @@ export function WeaponGrid() {
     [characters],
   );
 
+  const terms = useMemo(() => parseQuery(filters.search), [filters.search]);
+
   const shown = useMemo(() => {
     return weapons
       .filter((w) => location === "All" || w.location === location)
+      .filter((w) => tagFilter === "all" || (tags[w.instanceId] || "") === tagFilter)
       .filter((w) => filters.verdict === "all" || w.verdict === filters.verdict)
       .filter((w) => filters.weaponType === "all" || w.weaponType === filters.weaponType)
-      .filter((w) => w.name.toLowerCase().includes(filters.search.toLowerCase()))
+      .filter((w) => matchWeapon(w, tags[w.instanceId] || "", terms))
       .sort((a, b) => ORDER[a.verdict] - ORDER[b.verdict] || a.name.localeCompare(b.name));
-  }, [weapons, filters, location]);
+  }, [weapons, filters, location, tags, tagFilter, terms]);
 
   if (loading) return <div>Analyzing your inventory… (first run downloads the manifest)</div>;
   if (error) return <div style={{ color: "#c62828" }}>Error: {error}</div>;
@@ -96,11 +109,20 @@ export function WeaponGrid() {
           );
         })}
       </div>
+      <div style={{ marginBottom: 8 }}>
+        <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
+          <option value="all">All tags</option>
+          <option value="">Untagged</option>
+          {TAGS.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
       <Filters state={filters} types={types} onChange={setFilters} />
       {selected && (
         <WeaponDetail
           w={selected}
           characters={characters}
+          tag={tags[selected.instanceId] || ""}
+          onTag={(t) => setTag(selected.instanceId, t)}
           onClose={() => setSelected(null)}
           onMoved={() => { load(false); setSelected(null); }}
         />
@@ -116,7 +138,7 @@ export function WeaponGrid() {
         }}
       >
         {shown.map((w) => (
-          <WeaponCard key={w.instanceId} w={w} onClick={() => setSelected(w)} />
+          <WeaponCard key={w.instanceId} w={w} tag={tags[w.instanceId]} onClick={() => setSelected(w)} />
         ))}
       </div>
     </div>
