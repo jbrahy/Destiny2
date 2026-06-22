@@ -2,9 +2,10 @@ import json
 import os
 import secrets
 import time
+from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -17,14 +18,31 @@ from app.bungie_client import BungieApiError
 from app.bungie_oauth import build_authorize_url, exchange_code, refresh_tokens
 from app.builds import load_activities, load_builds, save_activity, save_build
 from app.config import get_settings
+from app import db
 from app.manifest import Manifest, load_cached_manifest, load_manifest
 from app.perk_ratings import TIER_SCORE, load_ratings, save_rating
 from app.perk_scoring import score_by_perks
 from app.recommend import element_for_subclass, recommend_weapons
 from app.loadout_builder import build_loadout
 from app.storage import get_conn, kv_get, kv_set
+from scripts.migrate import apply_migrations
 
-app = FastAPI(title="Destiny 2 Weapon Advisor")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    pool = await db.create_pool(get_settings())
+    await apply_migrations(pool)
+    app.state.pool = pool
+    yield
+    pool.close()
+    await pool.wait_closed()
+
+
+def get_pool(request: Request):
+    return request.app.state.pool
+
+
+app = FastAPI(title="Destiny 2 Weapon Advisor", lifespan=lifespan)
 
 # In-memory OAuth CSRF nonces. Process-local: a restart between /api/login and
 # /callback invalidates pending logins (acceptable for a local single-user tool).
