@@ -78,6 +78,12 @@ export async function fetchActivities(): Promise<ActivityRec[]> {
   return (await res.json()).activities as ActivityRec[];
 }
 
+export async function fetchActivityCatalog(): Promise<{ name: string; type: string }[]> {
+  const res = await fetch("/api/activities/catalog");
+  if (!res.ok) throw new Error(`Failed to load activity catalog (${res.status})`);
+  return (await res.json()).catalog as { name: string; type: string }[];
+}
+
 export async function saveActivity(name: string, data: ActivityRec): Promise<void> {
   const res = await fetch("/api/activities", {
     method: "PUT",

@@ -3,6 +3,7 @@ import { fetchArmor, fetchCharacters, fetchTags, moveItem, saveTag } from "../ap
 import { ArmorPiece, Character } from "../types";
 import { matchArmor, parseQuery } from "../search";
 import { TAGS } from "../visual";
+import { ArmorComparePanel } from "./ArmorComparePanel";
 import { Icon } from "./Icon";
 import { TagChip, TagSelect } from "./TagSelect";
 
@@ -74,6 +75,15 @@ export function ArmorList() {
     return Promise.all([fetchArmor(), fetchCharacters()])
       .then(([a, c]) => { setArmor(a.armor); setCharacters(c); })
       .catch((e) => setError(e.message));
+  }
+
+  const [compare, setCompare] = useState<ArmorPiece[]>([]);
+
+  function toggleCompare(a: ArmorPiece) {
+    setCompare((c) =>
+      c.some((x) => x.instanceId === a.instanceId)
+        ? c.filter((x) => x.instanceId !== a.instanceId)
+        : c.length < 4 ? [...c, a] : c);
   }
 
   function setTag(instanceId: string, tag: string) {
@@ -233,7 +243,15 @@ export function ArmorList() {
           <ArmorDetail a={selected} rating={rate(selected, maxBySlot[selected.slot] || 0)} />
         </div>
       )}
-      <p style={{ color: "var(--muted)" }}>{shown.length} of {armor.length} pieces</p>
+      <ArmorComparePanel
+        items={compare}
+        onRemove={(id) => setCompare((c) => c.filter((x) => x.instanceId !== id))}
+        onClear={() => setCompare([])}
+      />
+      <p style={{ color: "var(--muted)" }}>
+        {shown.length} of {armor.length} pieces
+        {compare.length === 1 && <span style={{ color: "var(--accent)" }}> · pick another ⇄ to compare</span>}
+      </p>
       {shown.length === 0 && (
         <p style={{ color: "var(--muted)" }}>No armor matches your current tab/filters.</p>
       )}
@@ -246,7 +264,8 @@ export function ArmorList() {
             onClick={() => setSelected(a)}
             style={{
               display: "flex", gap: 10, alignItems: "flex-start", background: "var(--panel)",
-              border: "1px solid var(--border)", borderRadius: 8, padding: 10, cursor: "pointer",
+              border: `1px solid ${compare.some((x) => x.instanceId === a.instanceId) ? "var(--accent)" : "var(--border)"}`,
+              borderRadius: 8, padding: 10, cursor: "pointer",
               borderLeft: `6px solid ${r.color}`,
             }}
           >
@@ -257,6 +276,16 @@ export function ArmorList() {
                   {a.name}{a.isExotic ? " ◆" : ""}
                 </strong>
                 <span style={{ display: "flex", gap: 6, alignItems: "center", whiteSpace: "nowrap" }}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleCompare(a); }}
+                    title="Compare"
+                    style={{
+                      padding: "0 6px", fontSize: 12, borderRadius: 4,
+                      color: compare.some((x) => x.instanceId === a.instanceId) ? "#0a0e16" : "var(--muted)",
+                      background: compare.some((x) => x.instanceId === a.instanceId) ? "var(--accent)" : "transparent",
+                      border: "1px solid var(--border)",
+                    }}
+                  >⇄</button>
                   <TagChip tag={tags[a.instanceId]} />
                   <span style={{ color: r.color, fontWeight: 600 }}>{r.label}</span>
                 </span>

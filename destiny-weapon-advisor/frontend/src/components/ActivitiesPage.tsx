@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchActivities, saveActivity } from "../api";
+import { fetchActivities, fetchActivityCatalog, saveActivity } from "../api";
 import { ActivityRec } from "../types";
 
 function ActivityCard({ activity }: { activity: ActivityRec }) {
@@ -57,9 +57,11 @@ export function ActivitiesPage() {
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [catalog, setCatalog] = useState<{ name: string; type: string }[]>([]);
 
   useEffect(() => {
     fetchActivities().then(setActivities).catch((e) => setError(e.message)).finally(() => setLoading(false));
+    fetchActivityCatalog().then(setCatalog).catch(() => setCatalog([]));
   }, []);
 
   const types = useMemo(
@@ -74,8 +76,10 @@ export function ActivitiesPage() {
   async function add() {
     const name = newName.trim();
     if (!name || activities.some((a) => a.name === name)) return;
+    const match = catalog.find((c) => c.name === name);
     const fresh: ActivityRec = {
-      name, type: "Custom", recommendedClass: "", recommendedSubclass: "", weapons: "", notes: "",
+      name, type: match?.type || "Custom",
+      recommendedClass: "", recommendedSubclass: "", weapons: "", notes: "",
     };
     await saveActivity(name, fresh);
     setActivities((prev) => [fresh, ...prev]);
@@ -94,8 +98,15 @@ export function ActivitiesPage() {
         Add any activity that's missing — newer raids/seasons aren't pre-loaded.
       </p>
       <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center", flexWrap: "wrap" }}>
-        <input placeholder="Add an activity…" value={newName} onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && add()} style={{ padding: 6, width: 240 }} />
+        <input
+          placeholder={catalog.length ? `Add an activity… (${catalog.length} from the game)` : "Add an activity…"}
+          value={newName} onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()} list="activity-catalog"
+          style={{ padding: 6, width: 300 }}
+        />
+        <datalist id="activity-catalog">
+          {catalog.map((c) => <option key={c.name} value={c.name}>{c.type}</option>)}
+        </datalist>
         <button onClick={add} style={{ padding: "6px 14px" }}>Add</button>
         <span style={{ marginLeft: 12, fontSize: 13, color: "var(--muted)" }}>Filter:</span>
         <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
