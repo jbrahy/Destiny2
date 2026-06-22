@@ -9,7 +9,7 @@ import { WeaponCard } from "./WeaponCard";
 import { WeaponDetail } from "./WeaponDetail";
 
 const ORDER: Record<Verdict, number> = {
-  god_roll: 0, upgrade: 1, good: 2, no_data: 3, dismantle: 4,
+  god_roll: 0, masterwork: 1, good: 2, no_data: 3, dismantle: 4,
 };
 
 function sinceText(cachedAt?: number): string {

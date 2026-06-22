@@ -27,7 +27,7 @@ export function Filters({
       >
         <option value="all">All verdicts</option>
         <option value="god_roll">God Roll</option>
-        <option value="upgrade">Upgrade</option>
+        <option value="masterwork">Masterwork → God Roll</option>
         <option value="good">Good</option>
         <option value="no_data">No Data</option>
         <option value="dismantle">Dismantle</option>

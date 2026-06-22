@@ -1,14 +1,14 @@
-import { Verdict, WeaponDto } from "../types";
+import { Verdict, VERDICT_LABEL, WeaponDto } from "../types";
 import { elementColor } from "../visual";
 import { Icon } from "./Icon";
 import { TagChip } from "./TagSelect";
 
 const BADGE: Record<Verdict, { label: string; color: string }> = {
-  god_roll: { label: "God Roll", color: "#2e7d32" },
-  upgrade: { label: "Upgrade", color: "#1565c0" },
-  good: { label: "Good", color: "#f9a825" },
-  no_data: { label: "No Data", color: "#9e9e9e" },
-  dismantle: { label: "Dismantle", color: "#c62828" },
+  god_roll: { label: VERDICT_LABEL.god_roll, color: "#2e7d32" },
+  masterwork: { label: VERDICT_LABEL.masterwork, color: "#1565c0" },
+  good: { label: VERDICT_LABEL.good, color: "#f9a825" },
+  no_data: { label: VERDICT_LABEL.no_data, color: "#9e9e9e" },
+  dismantle: { label: VERDICT_LABEL.dismantle, color: "#c62828" },
 };
 
 export function WeaponCard({

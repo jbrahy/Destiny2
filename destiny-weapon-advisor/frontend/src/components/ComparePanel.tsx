@@ -1,4 +1,4 @@
-import { WeaponDto } from "../types";
+import { VERDICT_LABEL, WeaponDto } from "../types";
 import { Icon } from "./Icon";
 
 export function ComparePanel({
@@ -12,7 +12,7 @@ export function ComparePanel({
   const statNames = Array.from(new Set(items.flatMap((w) => Object.keys(w.stats))));
   const rows: { label: string; get: (w: WeaponDto) => string | number; numeric?: boolean }[] = [
     { label: "Power", get: (w) => w.power, numeric: true },
-    { label: "Verdict", get: (w) => w.verdict.replace("_", " ") },
+    { label: "Verdict", get: (w) => VERDICT_LABEL[w.verdict] },
     { label: "Element", get: (w) => w.element },
     { label: "Ammo", get: (w) => w.ammoType },
     { label: "Frame", get: (w) => w.frame },
