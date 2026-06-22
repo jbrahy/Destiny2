@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchArmor, fetchCharacters } from "../api";
+import { fetchArmor, fetchCharacters, moveItem } from "../api";
 import { ArmorPiece, Character } from "../types";
 
 const SLOTS = ["Helmet", "Gauntlets", "Chest Armor", "Leg Armor", "Class Item"];
@@ -60,13 +60,40 @@ export function ArmorList() {
   const [ratingFilter, setRatingFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<ArmorPiece | null>(null);
+  const [equip, setEquip] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const [moveMsg, setMoveMsg] = useState<string | null>(null);
 
-  useEffect(() => {
-    Promise.all([fetchArmor(), fetchCharacters()])
+  function load() {
+    return Promise.all([fetchArmor(), fetchCharacters()])
       .then(([a, c]) => { setArmor(a.armor); setCharacters(c); })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
+      .catch((e) => setError(e.message));
+  }
+
+  useEffect(() => { load().finally(() => setLoading(false)); }, []);
+  useEffect(() => { setMoveMsg(null); }, [selected]);
+
+  async function doMove(target: Character) {
+    if (!selected) return;
+    const ok = window.confirm(
+      `Move "${selected.name}" to your ${target.className}${equip ? " and equip it" : ""}?`,
+    );
+    if (!ok) return;
+    setMoving(true);
+    setMoveMsg(null);
+    try {
+      await moveItem({
+        instanceId: selected.instanceId, itemHash: selected.itemHash,
+        targetCharacterId: target.id, equip,
+      });
+      await load();
+      setSelected(null);
+    } catch (e) {
+      setMoveMsg(`✗ ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setMoving(false);
+    }
+  }
 
   const maxBySlot = useMemo(() => {
     const m: Record<string, number> = {};
@@ -145,6 +172,31 @@ export function ArmorList() {
             {selected.slot} · {selected.className} · {selected.location} · ✦{selected.power}
             {selected.isMasterworked ? " · ★ Masterworked" : ""}
           </p>
+          {characters.length > 0 && (
+            <div style={{ background: "#f6f8fa", borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>
+              <strong style={{ fontSize: 13 }}>Move to: </strong>
+              {characters
+                .filter((c) => selected.className === "Any" || c.className === selected.className)
+                .map((c) => (
+                  <button
+                    key={c.id}
+                    disabled={moving || selected.location === c.className}
+                    onClick={() => doMove(c)}
+                    style={{ margin: "0 4px", padding: "4px 10px" }}
+                  >
+                    {c.className} {c.current ? "(current)" : ""}
+                  </button>
+                ))}
+              <label style={{ marginLeft: 8, fontSize: 13 }}>
+                <input type="checkbox" checked={equip} onChange={(e) => setEquip(e.target.checked)} /> equip
+              </label>
+              {moveMsg && (
+                <div style={{ marginTop: 6, fontSize: 13, color: moveMsg.startsWith("✓") ? "#2e7d32" : "#c62828" }}>
+                  {moveMsg}
+                </div>
+              )}
+            </div>
+          )}
           <ArmorDetail a={selected} rating={rate(selected, maxBySlot[selected.slot] || 0)} />
         </div>
       )}

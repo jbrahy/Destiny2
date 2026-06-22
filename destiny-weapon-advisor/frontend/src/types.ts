@@ -2,6 +2,7 @@ export type Verdict = "god_roll" | "good" | "upgrade" | "no_data" | "dismantle";
 
 export interface ArmorPiece {
   instanceId: string;
+  itemHash: number;
   name: string;
   slot: string;
   className: string;
