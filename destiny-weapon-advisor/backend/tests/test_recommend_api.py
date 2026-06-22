@@ -26,3 +26,11 @@ def test_recommendations_unknown_context_falls_back():
     body = resp.json()
     assert body["context"] == "Nonexistent Activity"
     assert set(body["slots"]) == {"Primary", "Special", "Heavy"}
+
+
+def test_recommendations_slots_are_lists():
+    client = TestClient(app)
+    resp = client.get("/api/recommendations")
+    assert resp.status_code == 200
+    slots = resp.json()["slots"]
+    assert all(isinstance(slots[k], list) for k in ("Primary", "Special", "Heavy"))

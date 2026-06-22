@@ -318,7 +318,7 @@ def recommendations(context: str = "general-pve") -> dict:
     cached = kv_get(conn, "weapons_cache")
     if not cached and _recompute_from_cache(conn):
         cached = kv_get(conn, "weapons_cache")
-    weapons_list = json.loads(cached)["weapons"] if cached else []
+    weapons_list = json.loads(cached).get("weapons", []) if cached else []
     ctx = _resolve_rec_context(conn, context)
     return recommend_weapons(weapons_list, ctx)
 
