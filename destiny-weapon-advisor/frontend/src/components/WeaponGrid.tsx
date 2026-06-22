@@ -3,6 +3,7 @@ import { bulkMove, fetchCharacters, fetchTags, fetchWeapons, saveTag } from "../
 import { Character, Verdict, WeaponDto } from "../types";
 import { matchWeapon, parseQuery } from "../search";
 import { TAGS } from "../visual";
+import { ComparePanel } from "./ComparePanel";
 import { FilterState, Filters } from "./Filters";
 import { WeaponCard } from "./WeaponCard";
 import { WeaponDetail } from "./WeaponDetail";
@@ -35,6 +36,14 @@ export function WeaponGrid() {
   });
 
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [compare, setCompare] = useState<WeaponDto[]>([]);
+
+  function toggleCompare(w: WeaponDto) {
+    setCompare((c) =>
+      c.some((x) => x.instanceId === w.instanceId)
+        ? c.filter((x) => x.instanceId !== w.instanceId)
+        : c.length < 4 ? [...c, w] : c);
+  }
 
   function setTag(instanceId: string, tag: string) {
     setTags((t) => ({ ...t, [instanceId]: tag }));
@@ -153,7 +162,15 @@ export function WeaponGrid() {
           onMoved={() => { load(false); setSelected(null); }}
         />
       )}
-      <p style={{ color: "var(--muted)" }}>{shown.length} of {weapons.length} weapons</p>
+      <ComparePanel
+        items={compare}
+        onRemove={(id) => setCompare((c) => c.filter((x) => x.instanceId !== id))}
+        onClear={() => setCompare([])}
+      />
+      <p style={{ color: "var(--muted)" }}>
+        {shown.length} of {weapons.length} weapons
+        {compare.length === 1 && <span style={{ color: "var(--accent)" }}> · pick another ⇄ to compare</span>}
+      </p>
       {shown.length === 0 && (
         <p style={{ color: "var(--muted)" }}>No weapons match your current tab/filters.</p>
       )}
@@ -164,7 +181,14 @@ export function WeaponGrid() {
         }}
       >
         {shown.map((w) => (
-          <WeaponCard key={w.instanceId} w={w} tag={tags[w.instanceId]} onClick={() => setSelected(w)} />
+          <WeaponCard
+            key={w.instanceId}
+            w={w}
+            tag={tags[w.instanceId]}
+            comparing={compare.some((x) => x.instanceId === w.instanceId)}
+            onToggleCompare={() => toggleCompare(w)}
+            onClick={() => setSelected(w)}
+          />
         ))}
       </div>
     </div>

@@ -11,14 +11,23 @@ const BADGE: Record<Verdict, { label: string; color: string }> = {
   dismantle: { label: "Dismantle", color: "#c62828" },
 };
 
-export function WeaponCard({ w, tag, onClick }: { w: WeaponDto; tag?: string; onClick: () => void }) {
+export function WeaponCard({
+  w, tag, comparing, onToggleCompare, onClick,
+}: {
+  w: WeaponDto;
+  tag?: string;
+  comparing?: boolean;
+  onToggleCompare?: () => void;
+  onClick: () => void;
+}) {
   const badge = BADGE[w.verdict];
   return (
     <div
       onClick={onClick}
       style={{
         display: "flex", gap: 10, alignItems: "flex-start", background: "var(--panel)",
-        border: "1px solid var(--border)", borderRadius: 8, padding: 10, cursor: "pointer",
+        border: `1px solid ${comparing ? "var(--accent)" : "var(--border)"}`,
+        borderRadius: 8, padding: 10, cursor: "pointer",
         borderLeft: `6px solid ${badge.color}`,
       }}
     >
@@ -29,6 +38,18 @@ export function WeaponCard({ w, tag, onClick }: { w: WeaponDto; tag?: string; on
             {w.name}
           </strong>
           <span style={{ display: "flex", gap: 6, alignItems: "center", whiteSpace: "nowrap" }}>
+            {onToggleCompare && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onToggleCompare(); }}
+                title="Compare"
+                style={{
+                  padding: "0 6px", fontSize: 12, borderRadius: 4,
+                  color: comparing ? "#0a0e16" : "var(--muted)",
+                  background: comparing ? "var(--accent)" : "transparent",
+                  border: "1px solid var(--border)",
+                }}
+              >⇄</button>
+            )}
             <TagChip tag={tag} />
             <span style={{ color: badge.color, fontWeight: 600 }}>{badge.label}</span>
           </span>
