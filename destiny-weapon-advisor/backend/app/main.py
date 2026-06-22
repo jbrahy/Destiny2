@@ -236,6 +236,7 @@ def _compute_weapons(conn, manifest: Manifest, profile: dict) -> dict:
 def _armor_to_dict(a) -> dict:
     return {
         "instanceId": a.instance_id,
+        "itemHash": a.item_hash,
         "name": a.name,
         "slot": a.slot,
         "className": a.class_name,
