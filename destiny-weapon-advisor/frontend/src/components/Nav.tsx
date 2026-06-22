@@ -1,10 +1,11 @@
 import { AccountSwitcher } from "./AccountSwitcher";
 import { VaultCounts } from "./VaultCounts";
 
-export type Section = "weapons" | "perks" | "armor" | "builds" | "activities" | "loadouts";
+export type Section = "weapons" | "recommend" | "perks" | "armor" | "builds" | "activities" | "loadouts";
 
 export const SECTIONS: { id: Section; label: string }[] = [
   { id: "weapons", label: "Weapons" },
+  { id: "recommend", label: "Recommend" },
   { id: "perks", label: "Perks" },
   { id: "armor", label: "Armor" },
   { id: "builds", label: "Builds" },
