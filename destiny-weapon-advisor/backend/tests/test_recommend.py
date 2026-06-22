@@ -42,15 +42,39 @@ def test_excludes_dismantle():
     assert [w["name"] for w in out["slots"]["Primary"]] == ["keep"]
 
 
-def test_activity_element_bonus_beats_higher_base():
-    # base "good"(3)+match(1)=4 should beat "upgrade"(4)+0=4? No — tie, then tiebreakers.
-    # Use clear case: matched "good" (3+1=4) beats unmatched "good" (3).
+def test_excludes_unknown_verdict():
+    weapons = [_w(name="keep", verdict="good"), _w(name="unknown", verdict="mythic")]
+    out = recommend_weapons(weapons, GENERAL)
+    # unknown verdict "mythic" should be excluded from all slots
+    assert [w["name"] for w in out["slots"]["Primary"]] == ["keep"]
+    assert [w["name"] for w in out["slots"]["Special"]] == []
+    assert [w["name"] for w in out["slots"]["Heavy"]] == []
+
+
+def test_activity_element_bonus_promotes_matching_weapon():
     activity = {"label": "Raid", "element": "Solar"}
     weapons = [_w(name="solar", verdict="good", element="Solar"),
                _w(name="void", verdict="good", element="Void")]
     out = recommend_weapons(weapons, activity)
     assert [w["name"] for w in out["slots"]["Primary"]] == ["solar", "void"]
     assert "element-matched for Solar" in out["slots"]["Primary"][0]["recommendReason"]
+
+
+def test_element_bonus_ties_one_tier_up_then_tiebreakers():
+    activity = {"label": "Raid", "element": "Solar"}
+    # Element bonus is +1, exactly one verdict tier.
+    # matched "good" (3+1=4) ties unmatched "upgrade" (4).
+    # Tiebreaker: masterwork.
+    weapons = [_w(name="matched_good_mw", verdict="good", element="Solar", isMasterworked=True),
+               _w(name="unmatched_upgrade", verdict="upgrade", element="Void", isMasterworked=False)]
+    out = recommend_weapons(weapons, activity)
+    assert [w["name"] for w in out["slots"]["Primary"]] == ["matched_good_mw", "unmatched_upgrade"]
+
+    # Reverse: unmatched upgrade with masterwork should beat matched good without.
+    weapons = [_w(name="matched_good", verdict="good", element="Solar", isMasterworked=False),
+               _w(name="unmatched_upgrade_mw", verdict="upgrade", element="Void", isMasterworked=True)]
+    out = recommend_weapons(weapons, activity)
+    assert [w["name"] for w in out["slots"]["Primary"]] == ["unmatched_upgrade_mw", "matched_good"]
 
 
 def test_general_context_no_element_bonus():

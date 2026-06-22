@@ -38,7 +38,7 @@ def recommend_weapons(weapons: list[dict], context: dict, top_n: int = 5) -> dic
     slots: dict[str, list[dict]] = {s: [] for s in _SLOTS}
     for w in weapons:
         base = _VERDICT_TIER.get(w.get("verdict"), 0)
-        if base <= 0:  # DISMANTLE or unknown verdict
+        if base <= 0:  # DISMANTLE or unrecognized verdict — excluded
             continue
         ammo = w.get("ammoType")
         if ammo not in slots:
