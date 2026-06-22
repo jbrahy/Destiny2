@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { fetchStatus } from "./api";
+import { ArmorList } from "./components/ArmorList";
+import { BuildsPage } from "./components/BuildsPage";
 import { Login } from "./components/Login";
-import { ArmorPage } from "./components/ArmorPage";
 import { Nav, Section } from "./components/Nav";
 import { PerksPage } from "./components/PerksPage";
-import { Placeholder } from "./components/Placeholder";
 import { WeaponGrid } from "./components/WeaponGrid";
 
 export default function App() {
@@ -29,13 +29,8 @@ export default function App() {
           </>
         )}
         {section === "perks" && <PerksPage />}
-        {section === "armor" && <ArmorPage />}
-        {section === "builds" && (
-          <Placeholder
-            title="Subclass Builds"
-            blurb="Recommended super, aspects, fragments, and abilities per class and subclass."
-          />
-        )}
+        {section === "armor" && <ArmorList />}
+        {section === "builds" && <BuildsPage />}
       </div>
     </div>
   );
