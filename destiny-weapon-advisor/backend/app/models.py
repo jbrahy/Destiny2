@@ -41,6 +41,7 @@ class OwnedWeapon:
     frame: str = ""
     perk_names: list[str] = field(default_factory=list)
     stats: dict[str, int] = field(default_factory=dict)
+    icon: str = ""
 
 
 @dataclass
@@ -55,6 +56,7 @@ class ArmorPiece:
     is_masterworked: bool
     stats: dict[str, int]
     location: str
+    icon: str = ""
 
 
 @dataclass

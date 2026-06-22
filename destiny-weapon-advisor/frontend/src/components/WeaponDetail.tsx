@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { moveItem } from "../api";
 import { Character, WeaponDto } from "../types";
+import { Icon } from "./Icon";
 
 function StatBar({ name, value }: { name: string; value: number }) {
   // Only the 0–100 stats (Range, Stability, Handling…) get a meaningful bar.
@@ -58,8 +59,13 @@ export function WeaponDetail({
   return (
     <div style={{ border: "1px solid #ccc", borderRadius: 8, padding: 16, marginBottom: 16 }}>
       <button onClick={onClose} style={{ float: "right" }}>Close</button>
-      <h2 style={{ margin: "0 0 4px" }}>{w.name}</h2>
-      <p style={{ margin: "0 0 8px", color: "#666" }}>{meta}{w.isMasterworked ? " · ★ Masterworked" : ""}</p>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
+        <Icon path={w.icon} size={56} alt={w.name} />
+        <div>
+          <h2 style={{ margin: "0 0 2px" }}>{w.name}</h2>
+          <p style={{ margin: 0, color: "#666" }}>{meta}{w.isMasterworked ? " · ★ Masterworked" : ""}</p>
+        </div>
+      </div>
       <p style={{ margin: "0 0 8px" }}>
         {w.power > 0 && <strong>✦ {w.power} Power</strong>}
         {w.frame && <span> · {w.frame}</span>}

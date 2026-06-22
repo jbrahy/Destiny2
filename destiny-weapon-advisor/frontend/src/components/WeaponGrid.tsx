@@ -106,6 +106,9 @@ export function WeaponGrid() {
         />
       )}
       <p style={{ color: "#666" }}>{shown.length} of {weapons.length} weapons</p>
+      {shown.length === 0 && (
+        <p style={{ color: "#999" }}>No weapons match your current tab/filters.</p>
+      )}
       <div
         style={{
           display: "grid", gap: 8,

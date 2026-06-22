@@ -28,6 +28,9 @@ class Manifest:
     def description(self, item_hash: int) -> str:
         return self._def(item_hash).get("displayProperties", {}).get("description", "")
 
+    def icon(self, item_hash: int) -> str:
+        return self._def(item_hash).get("displayProperties", {}).get("icon", "")
+
     def tier_type(self, item_hash: int) -> int:
         return self._def(item_hash).get("inventory", {}).get("tierType", 0)
 
