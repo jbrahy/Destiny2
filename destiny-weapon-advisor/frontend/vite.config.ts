@@ -13,4 +13,9 @@ export default defineConfig({
   test: {
     environment: "jsdom",
   },
+  ssgOptions: {
+    includedRoutes(paths: string[]) {
+      return paths.filter((p) => !p.startsWith("/app"));
+    },
+  },
 });
