@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchStatus } from "../api";
+import { Seo } from "../seo/Seo";
 import { ActivitiesPage } from "./ActivitiesPage";
 import { ArmorList } from "./ArmorList";
 import { BuildsPage } from "./BuildsPage";
@@ -24,6 +25,12 @@ export function AppShell() {
 
   return (
     <div style={{ fontFamily: "system-ui, sans-serif" }}>
+      <Seo
+        title="Destiny Advisor"
+        description="Your personal Destiny 2 dashboard."
+        path="/app"
+        noindex
+      />
       <Nav current={section} onChange={setSection} onLogout={() => setAuthed(false)} />
       <div style={{ padding: 24 }}>
         {section === "weapons" && (
