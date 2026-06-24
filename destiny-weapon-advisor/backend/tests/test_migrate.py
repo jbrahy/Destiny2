@@ -5,6 +5,8 @@ from scripts.migrate import apply_migrations
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 _ALL_TABLES = (
+    "ad_clicks",
+    "offers",
     "sessions",
     "oauth_states",
     "user_tokens",

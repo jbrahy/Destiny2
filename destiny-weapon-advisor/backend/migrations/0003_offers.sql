@@ -1,0 +1,27 @@
+CREATE TABLE offers (
+  offer_id BIGINT(20) UNSIGNED NOT NULL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  category VARCHAR(128) NOT NULL DEFAULT '',
+  advertiser VARCHAR(190) NOT NULL DEFAULT '',
+  countries VARCHAR(64) NOT NULL DEFAULT '',
+  payout_type VARCHAR(16) NOT NULL DEFAULT '',
+  payout_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  tracking_url TEXT NOT NULL,
+  headline VARCHAR(190) NOT NULL,
+  blurb VARCHAR(400) NOT NULL,
+  cta VARCHAR(40) NOT NULL,
+  image_url TEXT NULL,
+  status ENUM('active','paused') NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_offers_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE ad_clicks (
+  click_id BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  offer_id BIGINT(20) UNSIGNED NOT NULL,
+  user_id BIGINT(20) UNSIGNED NOT NULL,
+  clicked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_ad_clicks_offer (offer_id),
+  KEY idx_ad_clicks_user (user_id),
+  CONSTRAINT fk_ad_clicks_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci

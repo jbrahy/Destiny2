@@ -42,6 +42,8 @@ async def db_pool():
 
 
 _DATA_TABLES = (
+    "ad_clicks",
+    "offers",
     "sessions",
     "oauth_states",
     "user_tokens",
