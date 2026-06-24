@@ -34,15 +34,20 @@ describe("websiteJsonLd", () => {
 
 describe("weaponJsonLd", () => {
   it("has the weapon name", () => {
-    expect(weaponJsonLd({ name: "Foo" }).name).toBe("Foo");
+    expect(weaponJsonLd({ name: "Foo", slug: "foo" }).name).toBe("Foo");
   });
 
   it('has @type set', () => {
-    expect(weaponJsonLd({ name: "Foo" })["@type"]).toBeTruthy();
+    expect(weaponJsonLd({ name: "Foo", slug: "foo" })["@type"]).toBeTruthy();
   });
 
   it("passes through optional type and element", () => {
-    const result = weaponJsonLd({ name: "Bar", type: "Auto Rifle", element: "Solar" });
+    const result = weaponJsonLd({ name: "Bar", slug: "bar", type: "Auto Rifle", element: "Solar" });
     expect(result.name).toBe("Bar");
+  });
+
+  it("url is the canonical weapon URL", () => {
+    const result = weaponJsonLd({ name: "Foo", slug: "the-title-of-silence" });
+    expect(result.url).toBe("https://destinyopt.com/weapons/the-title-of-silence");
   });
 });

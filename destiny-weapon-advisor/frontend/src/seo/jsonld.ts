@@ -1,4 +1,4 @@
-import { SITE } from "./url";
+import { SITE, canonicalUrl } from "./url";
 
 export function websiteJsonLd() {
   return {
@@ -9,11 +9,12 @@ export function websiteJsonLd() {
   };
 }
 
-export function weaponJsonLd(w: { name: string; type?: string; element?: string }) {
+export function weaponJsonLd(w: { name: string; slug: string; type?: string; element?: string }) {
   return {
     "@context": "https://schema.org",
     "@type": "ItemPage",
     name: w.name,
+    url: canonicalUrl("/weapons/" + w.slug),
     ...(w.type ? { genre: w.type } : {}),
     ...(w.element ? { keywords: w.element } : {}),
   };

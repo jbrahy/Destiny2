@@ -8,7 +8,9 @@
     "build": "node ../../scripts/build_content.mjs && vite-react-ssg build && node ../../scripts/gen_sitemap.mjs",
     "build:app": "vite-react-ssg build && node ../../scripts/gen_sitemap.mjs",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:scripts": "node --test ../../scripts/build_content.test.mjs ../../scripts/gen_sitemap.test.mjs",
+    "test:all": "vitest run && npm run test:scripts"
   },
   "dependencies": {
     "react": "^18.3.1",
