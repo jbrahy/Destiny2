@@ -24,6 +24,7 @@ from app.recommend import element_for_subclass, recommend_weapons
 from app.loadout_builder import build_loadout
 from scripts.migrate import apply_migrations
 from app.auth import router as auth_router, get_current_user, require_csrf
+from app.ads import router as ads_router
 from app.bungie_session import valid_access_token
 from app.bungie_throttle import Throttle
 from app.repositories import cache, perk_ratings as perk_ratings_repo, builds as builds_repo, tokens, user_tables
@@ -48,6 +49,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Destiny 2 Weapon Advisor", lifespan=lifespan)
 app.include_router(auth_router)
+app.include_router(ads_router)
 
 # Every cache key derived from a single account's profile. Cleared together on
 # account switch so no cross-account data can survive (keep this list complete).
