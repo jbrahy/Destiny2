@@ -12,6 +12,14 @@ export const routes: RouteRecord[] = [
         index: true,
         Component: React.lazy(() => import("./pages/Landing")),
       },
+      {
+        path: "weapons/:slug",
+        lazy: () => import("./pages/WeaponPage"),
+        getStaticPaths: async () => {
+          const index = (await import("./content/weapons-index.json")).default as Array<{ slug: string }>;
+          return index.map((w) => `weapons/${w.slug}`);
+        },
+      },
     ],
   },
   {
