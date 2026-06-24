@@ -8,6 +8,7 @@ import { Login } from "./components/Login";
 import { Nav, Section } from "./components/Nav";
 import { PerksPage } from "./components/PerksPage";
 import { RecommendPage } from "./components/RecommendPage";
+import { SponsoredAds } from "./components/SponsoredAds";
 import { WeaponGrid } from "./components/WeaponGrid";
 
 export default function App() {
@@ -38,6 +39,7 @@ export default function App() {
         {section === "activities" && <ActivitiesPage />}
         {section === "loadouts" && <LoadoutsPage />}
       </div>
+      <SponsoredAds section={section} />
     </div>
   );
 }

@@ -260,6 +260,26 @@ export async function fetchLoadoutSuggestion(activity: string): Promise<LoadoutS
   return (await res.json()) as LoadoutSuggestion;
 }
 
+export interface Ad {
+  offer_id: number;
+  headline: string;
+  blurb: string;
+  cta: string;
+  image_url: string | null;
+  click_url: string;
+}
+
+export async function fetchAds(n = 4): Promise<Ad[]> {
+  try {
+    const res = await apiFetch("/api/ads?n=" + n);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.ads ?? []) as Ad[];
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchArmorSets(): Promise<ArmorSet[]> {
   const res = await apiFetch("/api/armor-sets");
   if (!res.ok) throw new Error(`Failed to load armor sets (${res.status})`);
