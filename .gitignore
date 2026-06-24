@@ -13,3 +13,7 @@ dist/
 *.crt
 *.key
 *.egg-info/
+destiny-weapon-advisor/frontend/src/content/*
+!destiny-weapon-advisor/frontend/src/content/__fixtures__
+destiny-weapon-advisor/frontend/src/content/__fixtures__/**
+!destiny-weapon-advisor/frontend/src/content/__fixtures__/*.json

@@ -1,0 +1,163 @@
+{
+  "itemDefs": {
+    "1234567890": {
+      "hash": 1234567890,
+      "itemType": 3,
+      "itemTypeDisplayName": "Pulse Rifle",
+      "defaultDamageType": 2,
+      "displayProperties": {
+        "name": "The Messenger",
+        "description": "A pulse rifle of legendary provenance."
+      },
+      "inventory": {
+        "tierType": 6
+      },
+      "equippingBlock": {
+        "ammoType": 1
+      },
+      "stats": {
+        "stats": {
+          "4284893193": { "statHash": 4284893193, "value": 68 },
+          "2762071195": { "statHash": 2762071195, "value": 32 },
+          "1240592695": { "statHash": 1240592695, "value": 45 }
+        }
+      },
+      "perks": [
+        { "perkHash": 1, "perkDisplayStyle": 0 }
+      ],
+      "sockets": {
+        "socketEntries": [
+          { "singleInitialItemHash": 9001 },
+          { "singleInitialItemHash": 9002 }
+        ]
+      },
+      "perkNames": ["Outlaw", "Kill Clip"]
+    },
+    "9876543210": {
+      "hash": 9876543210,
+      "itemType": 3,
+      "itemTypeDisplayName": "Pulse Rifle",
+      "defaultDamageType": 2,
+      "displayProperties": {
+        "name": "The Messenger",
+        "description": "A second The Messenger (duplicate name, different hash)."
+      },
+      "inventory": {
+        "tierType": 5
+      },
+      "equippingBlock": {
+        "ammoType": 1
+      },
+      "stats": {
+        "stats": {
+          "4284893193": { "statHash": 4284893193, "value": 55 },
+          "2762071195": { "statHash": 2762071195, "value": 50 },
+          "1240592695": { "statHash": 1240592695, "value": 60 }
+        }
+      },
+      "perkNames": ["Rapid Hit", "Vorpal Weapon"]
+    },
+    "1111111111": {
+      "hash": 1111111111,
+      "itemType": 3,
+      "itemTypeDisplayName": "Hand Cannon",
+      "defaultDamageType": 3,
+      "displayProperties": {
+        "name": "Igneous Hammer",
+        "description": "A hand cannon forged in Solar flame."
+      },
+      "inventory": {
+        "tierType": 5
+      },
+      "equippingBlock": {
+        "ammoType": 1
+      },
+      "stats": {
+        "stats": {
+          "4284893193": { "statHash": 4284893193, "value": 80 },
+          "2762071195": { "statHash": 2762071195, "value": 26 },
+          "1240592695": { "statHash": 1240592695, "value": 55 }
+        }
+      },
+      "perkNames": ["Opening Shot", "Incandescent"]
+    },
+    "2222222222": {
+      "hash": 2222222222,
+      "itemType": 2,
+      "itemTypeDisplayName": "Helmet",
+      "displayProperties": {
+        "name": "Helm of Saint-14",
+        "description": "Armor, not a weapon."
+      },
+      "inventory": {
+        "tierType": 6
+      }
+    },
+    "3333333333": {
+      "hash": 3333333333,
+      "itemType": 0,
+      "itemTypeDisplayName": "",
+      "displayProperties": {
+        "name": "Ghost Shell",
+        "description": "Not a weapon either."
+      },
+      "inventory": {
+        "tierType": 3
+      }
+    },
+    "4444444444": {
+      "hash": 4444444444,
+      "itemType": 3,
+      "itemTypeDisplayName": "Auto Rifle",
+      "displayProperties": {
+        "name": "",
+        "description": "Unnamed weapon — should be filtered."
+      },
+      "inventory": {
+        "tierType": 5
+      },
+      "equippingBlock": {
+        "ammoType": 1
+      }
+    },
+    "5555555555": {
+      "hash": 5555555555,
+      "itemType": 3,
+      "itemTypeDisplayName": "Sniper Rifle",
+      "displayProperties": {
+        "name": "Redacted",
+        "description": "[Redacted]"
+      },
+      "inventory": {
+        "tierType": 5
+      },
+      "equippingBlock": {
+        "ammoType": 2
+      },
+      "redacted": true
+    }
+  },
+  "statDefs": {
+    "4284893193": {
+      "hash": 4284893193,
+      "displayProperties": {
+        "name": "Range",
+        "description": "How far the weapon can shoot accurately."
+      }
+    },
+    "2762071195": {
+      "hash": 2762071195,
+      "displayProperties": {
+        "name": "Stability",
+        "description": "How stable the weapon is during fire."
+      }
+    },
+    "1240592695": {
+      "hash": 1240592695,
+      "displayProperties": {
+        "name": "Handling",
+        "description": "How quickly the weapon can be readied."
+      }
+    }
+  }
+}
