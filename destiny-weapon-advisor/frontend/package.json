@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite-react-ssg build",
+    "build:content": "node ../../scripts/build_content.mjs",
+    "build": "node ../../scripts/build_content.mjs && vite-react-ssg build && node ../../scripts/gen_sitemap.mjs",
+    "build:app": "vite-react-ssg build && node ../../scripts/gen_sitemap.mjs",
     "preview": "vite preview",
     "test": "vitest run"
   },
