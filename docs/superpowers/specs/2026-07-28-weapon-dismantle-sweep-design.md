@@ -39,13 +39,31 @@ Two sources, visually distinguished in the UI:
 
 1. **Junk-tagged weapons** — from the existing `user_item_tags` table
    (`keep | junk | infuse | favorite`). Pre-checked.
-2. **Low-verdict suggestions** — C/D-tier rolls from `perk_scoring`. Start
-   **unchecked**; the user opts each one in.
+2. **Low-verdict suggestions** — weapons the scoring engine already scored
+   `Verdict.DISMANTLE`. Start **unchecked**; the user opts each one in.
 
 The app never selects a weapon for destruction without an explicit user action.
 
-B-tier rolls sit between the two: not suggested, not blocked. They enter a sweep
-only if the user tagged them junk.
+### Verdict taxonomy
+
+Weapon verdicts (`app/models.py`) are an enum, *not* the S/A/B/C/D scale — that
+scale (`TIER_SCORE`) rates individual perks, not weapons. The five verdicts map
+to sweep behavior as:
+
+| Verdict | Sweep behavior |
+|---|---|
+| `god_roll` | Blocked; override required |
+| `masterwork` | Blocked; override required (strong perks, just not masterworked yet) |
+| `good` | Neither suggested nor blocked |
+| `no_data` | Neither suggested nor blocked |
+| `dismantle` | Suggested, unchecked |
+
+`good` and `no_data` sit in the middle: they enter a sweep only if the user
+tagged them junk.
+
+`score_by_perks` already demotes unremarkable random-roll duplicates to
+`dismantle` when a better copy exists, setting `dupe_demoted`. Those arrive as
+suggestions for free; the preview surfaces the distinct reason.
 
 ## Blocklist (server-enforced)
 
@@ -53,9 +71,13 @@ Enforced in the backend. The client is never trusted with these rules.
 
 | Rule | Behavior |
 |---|---|
-| Exotic (`tier_type == 6`) | Blocked; explicit per-instance override required |
-| Verdict `S` or `A` from `perk_scoring` | Blocked; explicit per-instance override required |
+| Exotic (`manifest.tier_type(item_hash) == 6`) | Blocked; explicit per-instance override required |
+| Verdict `god_roll` or `masterwork` | Blocked; explicit per-instance override required |
 | Currently equipped on any character | Hard block; no override (the game rejects it regardless) |
+
+`OwnedWeapon` carries no exotic flag today, so the blocklist needs one added:
+`is_exotic` in `assemble_weapons`, mirroring how `ArmorPiece` already derives it
+from `manifest.tier_type(item_hash) == 6`.
 
 Overrides are per-instance and echo back into the confirmation list, so an
 overridden exotic is still visibly an exotic at the moment of commit.
@@ -84,10 +106,17 @@ pure functions. HTTP handlers in `main.py` stay thin, matching the existing
 | Endpoint | Purpose |
 |---|---|
 | `POST /api/dismantle/preview` | Returns candidates (tagged vs suggested), `blocked[]` with reasons, and the batch plan |
-| `POST /api/dismantle/sweep` | Per item: unlock, then transfer to character. Sequential, through `bungie_throttle.py` |
-| `POST /api/dismantle/undo` | Transfer back to vault and restore prior lock state |
+| `POST /api/dismantle/sweep` | Per item: transfer to character, then unlock. Sequential, through `bungie_throttle.py` |
+| `POST /api/dismantle/undo` | Restore prior lock state, then transfer back to vault |
 
-**Ordering guarantee:** unlock strictly precedes transfer for each item.
+**Ordering guarantee:** transfer strictly precedes unlock for each item.
+
+Locking does not impede transfers — it only blocks in-game dismantle — so this
+ordering costs nothing and buys a safer interruption. A sweep that dies mid-run
+leaves weapons *locked* on a character (inert, unable to be dismantled by
+accident). The reverse order would leave them unlocked in the vault, where they
+can be dismantled from the vault screen. Undo mirrors it: re-lock first, then
+move back.
 
 **New table** — undo cannot restore a lock state that was never recorded:
 
@@ -132,13 +161,13 @@ TDD, matching the existing one-file-per-concern layout under `backend/tests/`.
 
 | File | Covers |
 |---|---|
-| `test_dismantle_blocklist.py` | Exotics and S/A verdicts blocked; override permits; equipped never permitted even with override |
+| `test_dismantle_blocklist.py` | Exotics and `god_roll`/`masterwork` verdicts blocked; override permits; equipped never permitted even with override |
 | `test_dismantle_batching.py` | Capacity math against pre-occupied buckets; remainder ordering |
 | `test_dismantle_undo.py` | `was_locked` recorded on stage, restored on undo |
 | `test_endpoints_dismantle.py` | Endpoint wiring, following `test_endpoints_transfer.py` |
 
-All tests run against a fake Bungie client asserting call order (unlock strictly
-before transfer). No test touches live inventory.
+All tests run against a fake Bungie client asserting call order (transfer strictly
+before unlock). No test touches live inventory.
 
 `test_dismantle_blocklist.py` is the highest-value file: it is the guard against
 destroying something irreplaceable.
