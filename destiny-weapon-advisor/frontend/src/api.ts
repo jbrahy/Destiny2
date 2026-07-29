@@ -312,3 +312,61 @@ export async function applyArmorSet(name: string): Promise<MoveResult[]> {
   }
   return (await res.json()).results as MoveResult[];
 }
+
+export type DismantleCandidate = {
+  instanceId: string;
+  itemHash: number;
+  name: string;
+  icon: string;
+  power: number;
+  verdict: string;
+  source: "tagged" | "suggested";
+  reason: string;
+  blocked: "" | "locked" | "exotic" | "high_verdict" | "equipped";
+  overridable: boolean;
+};
+
+export type BatchPlan = {
+  staged: string[];
+  deferred: string[];
+  perBucket: Record<string, { name: string; free: number; staged: number }>;
+};
+
+async function dismantlePost(url: string, body: unknown): Promise<any> {
+  const res = await apiFetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(data.detail || `Request failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function fetchDismantlePreview(characterId: string): Promise<{
+  candidates: DismantleCandidate[];
+  plan: BatchPlan;
+  staged: Record<string, boolean>;
+}> {
+  return dismantlePost("/api/dismantle/preview", { characterId });
+}
+
+export async function runDismantleSweep(
+  characterId: string, instanceIds: string[], overrides: string[],
+): Promise<{
+  staged: string[];
+  deferred: string[];
+  rejected: { instanceId: string; reason: string }[];
+  failed: { instanceId: string; error: string }[];
+}> {
+  return dismantlePost("/api/dismantle/sweep", { characterId, instanceIds, overrides });
+}
+
+export async function undoDismantleSweep(characterId: string): Promise<{
+  restored: string[];
+  failed: { instanceId: string; error: string }[];
+}> {
+  return dismantlePost("/api/dismantle/undo", { characterId });
+}
