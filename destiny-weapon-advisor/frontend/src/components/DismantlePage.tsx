@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  DismantleCandidate, BatchPlan,
+  DismantleCandidate, BatchPlan, bulkTag,
   fetchCharacters, fetchDismantlePreview, runDismantleSweep, undoDismantleSweep,
 } from "../api";
 import { Character } from "../types";
@@ -48,6 +48,34 @@ export function DismantlePage() {
       })
       .catch((e) => setError(String(e)));
   }, [characterId]);
+
+  // Engine suggestions that are not blocked — the set "tag all as junk" acts on.
+  const taggableSuggestions = candidates.filter(
+    (c) => c.source === "suggested" && !c.blocked,
+  );
+
+  async function tagSuggestionsJunk() {
+    setBusy(true);
+    setError("");
+    setInfo("");
+    try {
+      const ids = taggableSuggestions.map((c) => c.instanceId);
+      const count = await bulkTag(ids, "junk");
+      // Re-preview so they come back as source "tagged" and arrive pre-checked.
+      const refreshed = await fetchDismantlePreview(characterId);
+      setCandidates(refreshed.candidates);
+      setPlan(refreshed.plan);
+      setSelected(new Set(
+        refreshed.candidates.filter((c) => c.source === "tagged" && !c.blocked)
+          .map((c) => c.instanceId),
+      ));
+      setInfo(`Tagged ${count} weapon(s) as junk.`);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function toggle(set: Set<string>, id: string): Set<string> {
     const next = new Set(set);
@@ -169,6 +197,18 @@ export function DismantlePage() {
           <strong>{stagedCount} weapon(s) staged.</strong> Dismantle them in-game,
           then run the next batch.{" "}
           <button onClick={undo} disabled={busy}>Undo sweep</button>
+        </div>
+      )}
+
+      {taggableSuggestions.length > 0 && (
+        <div style={{ margin: "12px 0" }}>
+          <button onClick={tagSuggestionsJunk} disabled={busy}>
+            Tag all {taggableSuggestions.length} suggestion(s) as junk
+          </button>{" "}
+          <span style={{ color: "var(--muted)", fontSize: 12 }}>
+            Marks every unblocked suggestion junk, so they persist and arrive
+            pre-checked. Blocked rows are never included.
+          </span>
         </div>
       )}
 

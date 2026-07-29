@@ -371,3 +371,16 @@ export async function undoDismantleSweep(characterId: string): Promise<{
 }> {
   return dismantlePost("/api/dismantle/undo", { characterId });
 }
+
+export async function bulkTag(instanceIds: string[], tag: string): Promise<number> {
+  const res = await apiFetch("/api/tags/bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ instanceIds, tag }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(data.detail || `Bulk tag failed (${res.status})`);
+  }
+  return (await res.json()).count as number;
+}

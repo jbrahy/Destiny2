@@ -18,6 +18,31 @@ async def get_tags(pool, user_id: int) -> dict:
     return {instance_id: tag for instance_id, tag in rows}
 
 
+async def set_tags_bulk(pool, user_id: int, instance_ids: list[str], tag: str) -> int:
+    """Apply one tag to many instances at once (or clear them when tag is falsy).
+
+    Exists so "tag every dismantle suggestion junk" is a single round trip
+    instead of one request per weapon. Returns the number of instances touched.
+    """
+    if not instance_ids:
+        return 0
+    async with pool.acquire() as conn, conn.cursor() as cur:
+        if tag:
+            await cur.executemany(
+                "INSERT INTO user_item_tags (user_id, instance_id, tag) VALUES (%s, %s, %s) "
+                "ON DUPLICATE KEY UPDATE tag=VALUES(tag)",
+                [(user_id, instance_id, tag) for instance_id in instance_ids],
+            )
+        else:
+            placeholders = ", ".join(["%s"] * len(instance_ids))
+            await cur.execute(
+                f"DELETE FROM user_item_tags WHERE user_id=%s AND instance_id IN ({placeholders})",
+                (user_id, *instance_ids),
+            )
+        await conn.commit()
+    return len(instance_ids)
+
+
 async def set_tag(pool, user_id: int, instance_id: str, tag: str) -> None:
     """Upsert a tag for an item instance; if tag is falsy, delete the row."""
     if tag:

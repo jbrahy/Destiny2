@@ -7,7 +7,7 @@ import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from app.bungie_client import (
     CLASS_TYPES, assemble_armor, assemble_weapons, equip_item,
@@ -97,6 +97,23 @@ class ActivityBody(BaseModel):
 class TagBody(BaseModel):
     instanceId: str
     tag: str  # keep | junk | infuse | favorite | "" (clears)
+
+
+_ALLOWED_TAGS = {"keep", "junk", "infuse", "favorite", ""}
+_MAX_BULK_TAGS = 1000
+
+
+class BulkTagBody(BaseModel):
+    instanceIds: list[str] = Field(max_length=_MAX_BULK_TAGS)
+    tag: str  # keep | junk | infuse | favorite | "" (clears)
+
+    @field_validator("tag")
+    @classmethod
+    def _known_tag(cls, value: str) -> str:
+        """Reject typos rather than persisting an unusable tag."""
+        if value not in _ALLOWED_TAGS:
+            raise ValueError(f"unknown tag {value!r}")
+        return value
 
 
 class BulkTransferBody(BaseModel):
@@ -403,6 +420,19 @@ async def put_tag(
     uid = current_user["user_id"]
     await user_tables.set_tag(pool, uid, body.instanceId, body.tag)
     return {"ok": True}
+
+
+@app.post("/api/tags/bulk")
+async def put_tags_bulk(
+    body: BulkTagBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+    _csrf=Depends(require_csrf),
+) -> dict:
+    """Apply one tag to many instances — e.g. tag every dismantle suggestion junk."""
+    uid = current_user["user_id"]
+    count = await user_tables.set_tags_bulk(pool, uid, body.instanceIds, body.tag)
+    return {"ok": True, "count": count}
 
 
 def _candidate_to_dict(c) -> dict:
