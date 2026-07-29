@@ -384,3 +384,23 @@ export async function bulkTag(instanceIds: string[], tag: string): Promise<numbe
   }
   return (await res.json()).count as number;
 }
+
+export type ChaseRow = {
+  itemHash: number;
+  name: string;
+  icon: string;
+  weaponType: string;
+  ceiling: string;
+  ownedBest: string;
+  chasePerks: string[];
+  haveCount: number;
+};
+
+export async function fetchChase(): Promise<ChaseRow[]> {
+  const res = await apiFetch("/api/chase");
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(data.detail || `Failed to load chase list (${res.status})`);
+  }
+  return (await res.json()).chase as ChaseRow[];
+}

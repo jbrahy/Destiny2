@@ -2,7 +2,7 @@ import { logout } from "../api";
 import { AccountSwitcher } from "./AccountSwitcher";
 import { VaultCounts } from "./VaultCounts";
 
-export type Section = "weapons" | "recommend" | "perks" | "armor" | "builds" | "activities" | "loadouts" | "dismantle";
+export type Section = "weapons" | "recommend" | "perks" | "armor" | "builds" | "activities" | "loadouts" | "dismantle" | "chase";
 
 export const SECTIONS: { id: Section; label: string }[] = [
   { id: "weapons", label: "Weapons" },
@@ -12,6 +12,7 @@ export const SECTIONS: { id: Section; label: string }[] = [
   { id: "builds", label: "Builds" },
   { id: "activities", label: "Activities" },
   { id: "loadouts", label: "Loadouts" },
+  { id: "chase", label: "Chase" },
   { id: "dismantle", label: "Dismantle" },
 ];
 

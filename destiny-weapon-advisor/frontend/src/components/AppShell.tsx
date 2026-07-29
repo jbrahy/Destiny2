@@ -4,6 +4,7 @@ import { Seo } from "../seo/Seo";
 import { ActivitiesPage } from "./ActivitiesPage";
 import { ArmorList } from "./ArmorList";
 import { BuildsPage } from "./BuildsPage";
+import { ChasePage } from "./ChasePage";
 import { DismantlePage } from "./DismantlePage";
 import { LoadoutsPage } from "./LoadoutsPage";
 import { Login } from "./Login";
@@ -46,6 +47,7 @@ export function AppShell() {
         {section === "builds" && <BuildsPage />}
         {section === "activities" && <ActivitiesPage />}
         {section === "loadouts" && <LoadoutsPage />}
+        {section === "chase" && <ChasePage />}
         {section === "dismantle" && <DismantlePage />}
       </div>
       <SponsoredAds section={section} />

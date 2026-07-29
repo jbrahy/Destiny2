@@ -20,6 +20,7 @@ from app.bungie_oauth import refresh_tokens
 from app.config import get_settings
 from app import db
 from app import dismantle as dismantle_logic
+from app.chase import chase_candidates
 from app.deps import get_pool
 from app.manifest import Manifest, load_cached_manifest, load_manifest
 from app.perk_ratings import TIER_SCORE
@@ -400,6 +401,26 @@ async def put_build(
     uid = current_user["user_id"]
     await builds_repo.save_build(pool, uid, body.key, body.data)
     return {"ok": True}
+
+
+@app.get("/api/chase")
+async def get_chase(
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    """Weapons you own whose roll pool allows a better roll than your best copy.
+
+    Read-only, and derived from the cached profile — the trait pool comes from
+    the manifest, so no Bungie call is needed.
+    """
+    uid = current_user["user_id"]
+    profile = await _load_profile_or_400(pool, uid)
+    manifest = await load_cached_manifest(pool)
+    if manifest is None:
+        raise HTTPException(status_code=400, detail="Load your inventory first.")
+    weapons = assemble_weapons(profile, manifest)
+    ratings = await perk_ratings_repo.load(pool, uid)
+    return {"chase": chase_candidates(weapons, manifest, ratings)}
 
 
 @app.get("/api/tags")
