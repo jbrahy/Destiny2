@@ -14,6 +14,7 @@ from app.bungie_client import (
 )
 from app.bungie_client import BungieApiError
 from app.bungie_client import set_item_lock_state
+from app.bungie_client import _LOCKED_STATE
 from app.bungie_oauth import refresh_tokens
 from app.config import get_settings
 from app import db
@@ -456,6 +457,87 @@ async def dismantle_preview(
                  "perBucket": {str(k): v for k, v in plan.per_bucket.items()}},
         "staged": await user_tables.get_staged_sweep(pool, uid),
     }
+
+
+def _locked_instance_ids(profile: dict) -> set[str]:
+    """Instance ids currently locked, read from the item state bitmask."""
+    locked = set()
+    buckets = [profile.get("profileInventory", {}).get("data", {})]
+    buckets += list(profile.get("characterInventories", {}).get("data", {}).values())
+    buckets += list(profile.get("characterEquipment", {}).get("data", {}).values())
+    for entry in buckets:
+        for item in entry.get("items", []):
+            instance_id = item.get("itemInstanceId")
+            if instance_id and item.get("state", 0) & _LOCKED_STATE:
+                locked.add(instance_id)
+    return locked
+
+
+@app.post("/api/dismantle/sweep")
+async def dismantle_sweep(
+    request: Request,
+    body: DismantleSweepBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+    _csrf=Depends(require_csrf),
+) -> dict:
+    """Stage a batch: move each approved weapon to the character, then unlock it.
+
+    Transfer precedes unlock so an interrupted sweep leaves weapons locked on a
+    character rather than unlocked in the vault.
+    """
+    settings = get_settings()
+    uid = current_user["user_id"]
+    profile = await _load_profile_or_400(pool, uid)
+    candidates = await _sweep_candidates(pool, uid, profile)
+
+    allowed, rejected = dismantle_logic.enforce_blocklist(
+        candidates, body.instanceIds, body.overrides
+    )
+    occupancy = dismantle_logic.bucket_occupancy(profile, body.characterId)
+    plan = dismantle_logic.plan_batch(candidates, allowed, occupancy)
+
+    by_id = {c.instance_id: c for c in candidates}
+    locked_now = _locked_instance_ids(profile)
+    # Never re-record lock state for an instance already staged. Staging unlocks
+    # the item, so a second pass would read it as unlocked and overwrite the true
+    # original with False — destroying exactly what undo needs to restore.
+    already_staged = await user_tables.get_staged_sweep(pool, uid)
+    throttle = request.app.state.throttle
+    staged: list[str] = []
+    failed: list[dict] = []
+    staged_rows: list[tuple[str, bool]] = []
+
+    async with httpx.AsyncClient(
+        timeout=60.0, headers={"X-API-Key": settings.bungie_api_key}
+    ) as client:
+        access, mtype, mid = await valid_access_token(
+            pool, uid, settings, client, settings.token_enc_key
+        )
+        cached_mid = await cache.get(pool, uid, "profile_membership_id")
+        if cached_mid != mid:
+            raise HTTPException(status_code=400, detail="Your cached inventory is for a "
+                                "different account — open Weapons and Refresh, then retry.")
+        for instance_id in plan.staged:
+            candidate = by_id[instance_id]
+            try:
+                await _move_one(client, settings, access, mtype, profile, instance_id,
+                                candidate.item_hash, body.characterId, False, throttle)
+                await throttle.run(lambda iid=instance_id: set_item_lock_state(
+                    mtype, iid, body.characterId, False, access, settings, client
+                ))
+            except (BungieApiError, httpx.HTTPStatusError) as exc:
+                failed.append({"instanceId": instance_id, "error": str(exc)})
+                continue
+            staged.append(instance_id)
+            if instance_id not in already_staged:
+                staged_rows.append((instance_id, instance_id in locked_now))
+        fresh = await throttle.run(lambda: get_profile(mtype, mid, access, settings, client))
+
+    await user_tables.stage_sweep_items(pool, uid, staged_rows)
+    await _save_profile(pool, uid, fresh, mid)
+    return {"staged": staged, "deferred": plan.deferred,
+            "rejected": rejected, "failed": failed}
 
 
 @app.get("/api/activities")
