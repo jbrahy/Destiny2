@@ -319,6 +319,7 @@ export type DismantleCandidate = {
   name: string;
   icon: string;
   power: number;
+  bucketHash: string;
   verdict: string;
   source: "tagged" | "suggested";
   reason: string;

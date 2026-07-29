@@ -21,6 +21,7 @@ export function DismantlePage() {
   const [overrides, setOverrides] = useState<Set<string>>(new Set());
   const [stagedCount, setStagedCount] = useState(0);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -54,17 +55,44 @@ export function DismantlePage() {
     return next;
   }
 
+  // Cancelling an override must also drop the row from `selected` — a blocked,
+  // non-overridden row is never usable, so it can't stay checked/selected.
+  function toggleOverride(id: string) {
+    setOverrides((prev) => {
+      const next = toggle(prev, id);
+      const cancelled = prev.has(id) && !next.has(id);
+      if (cancelled) {
+        setSelected((s) => {
+          if (!s.has(id)) return s;
+          const ns = new Set(s);
+          ns.delete(id);
+          return ns;
+        });
+      }
+      return next;
+    });
+  }
+
   async function sweep() {
     setBusy(true);
     setError("");
+    setInfo("");
     try {
       const res = await runDismantleSweep(
         characterId, [...selected], [...overrides],
       );
       setStagedCount(res.staged.length);
-      if (res.failed.length) {
-        setError(`${res.failed.length} item(s) failed: ${res.failed.map((f) => f.error).join("; ")}`);
+      if (res.deferred.length) {
+        setInfo(`${res.staged.length} staged, ${res.deferred.length} deferred to the next batch.`);
       }
+      const problems: string[] = [];
+      if (res.rejected.length) {
+        problems.push(`${res.rejected.length} rejected: ${res.rejected.map((r) => r.reason).join("; ")}`);
+      }
+      if (res.failed.length) {
+        problems.push(`${res.failed.length} item(s) failed: ${res.failed.map((f) => f.error).join("; ")}`);
+      }
+      if (problems.length) setError(problems.join(" · "));
       const refreshed = await fetchDismantlePreview(characterId);
       setCandidates(refreshed.candidates);
       setPlan(refreshed.plan);
@@ -91,7 +119,20 @@ export function DismantlePage() {
     }
   }
 
-  const fitting = plan ? Object.values(plan.perBucket).reduce((n, b) => n + b.free, 0) : 0;
+  // The server stages per-bucket: an item only fits if its OWN bucket has room,
+  // so the headline number must sum per-bucket minima, not a flat total.
+  let fitting = 0;
+  if (plan) {
+    const selectedByBucket: Record<string, number> = {};
+    for (const c of candidates) {
+      if (selected.has(c.instanceId)) {
+        selectedByBucket[c.bucketHash] = (selectedByBucket[c.bucketHash] ?? 0) + 1;
+      }
+    }
+    for (const [bucketHash, count] of Object.entries(selectedByBucket)) {
+      fitting += Math.min(count, plan.perBucket[bucketHash]?.free ?? 0);
+    }
+  }
 
   return (
     <div>
@@ -128,7 +169,8 @@ export function DismantlePage() {
         </p>
       )}
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {info && <p style={{ color: "var(--muted)" }}>{info}</p>}
+      {error && <p style={{ color: "#c62828" }}>{error}</p>}
 
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
@@ -162,13 +204,13 @@ export function DismantlePage() {
                 <td>
                   {c.blocked ? (
                     <>
-                      <span style={{ color: "crimson", fontWeight: 700 }}>
+                      <span style={{ color: "#c62828", fontWeight: 700 }}>
                         {BLOCK_LABEL[c.blocked] ?? c.blocked}
                       </span>
                       {c.overridable && (
                         <button
                           style={{ marginLeft: 8 }}
-                          onClick={() => setOverrides(toggle(overrides, c.instanceId))}
+                          onClick={() => toggleOverride(c.instanceId)}
                         >
                           {overridden ? "Cancel override" : "Override"}
                         </button>
