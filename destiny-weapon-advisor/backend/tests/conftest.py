@@ -52,6 +52,7 @@ _DATA_TABLES = (
     "user_builds",
     "user_activities",
     "user_item_tags",
+    "user_sweep_items",
     "user_loadouts",
     "user_armor_sets",
     "manifest_cache",
