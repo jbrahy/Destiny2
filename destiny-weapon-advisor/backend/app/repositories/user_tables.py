@@ -110,13 +110,21 @@ async def stage_sweep_items(pool, user_id: int, membership_id: str, rows: list[t
     """Record staged items and the lock state each held before the sweep, so
     undo can put it back exactly as it was. Keyed by membership_id as well as
     user_id: a user can hold sweeps staged against more than one Destiny
-    account, and rows from one must never bleed into another's undo."""
+    account, and rows from one must never bleed into another's undo.
+
+    Insert-only: an existing row's was_locked is never updated. Staging unlocks
+    the item, so any second pass over the same instance (a retry, a second tab,
+    two sweeps racing) reads it as unlocked, and letting that win would
+    overwrite the true original with False — unrecoverable, since an unlocked
+    weapon's prior lock state cannot be derived from anything else. The
+    self-assignment is what makes the upsert a no-op on conflict; it is
+    deliberate, not a typo."""
     if not rows:
         return
     async with pool.acquire() as conn, conn.cursor() as cur:
         await cur.executemany(
             "INSERT INTO user_sweep_items (user_id, membership_id, instance_id, was_locked) "
-            "VALUES (%s, %s, %s, %s) ON DUPLICATE KEY UPDATE was_locked=VALUES(was_locked)",
+            "VALUES (%s, %s, %s, %s) ON DUPLICATE KEY UPDATE was_locked=was_locked",
             [(user_id, membership_id, instance_id, int(was_locked)) for instance_id, was_locked in rows],
         )
         await conn.commit()

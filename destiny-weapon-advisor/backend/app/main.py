@@ -424,8 +424,26 @@ def _candidate_to_dict(c) -> dict:
     }
 
 
+def _postmaster_instance_ids(profile: dict) -> set[str]:
+    """Instance ids currently sitting in a character's postmaster.
+
+    Postmaster items live in characterInventories like any other held item, but
+    only the raw profile shows it — a Candidate's bucket_hash comes from the
+    manifest definition, so a postmaster hand cannon reports Kinetic and looks
+    ordinary to the (pure) planner. Worse, when it is already on the sweep's
+    target character _move_one sees source == target and transfers nothing, so
+    the item would simply be unlocked in place, in the postmaster."""
+    out: set[str] = set()
+    for bucket in profile.get("characterInventories", {}).get("data", {}).values():
+        for item in bucket.get("items", []):
+            instance_id = item.get("itemInstanceId")
+            if instance_id and item.get("bucketHash") == _POSTMASTER_BUCKET:
+                out.add(instance_id)
+    return out
+
+
 async def _sweep_candidates(pool, uid: int, profile: dict) -> list:
-    """Score the cached inventory and classify it into sweep candidates."""
+    """Score the inventory and classify it into sweep candidates."""
     manifest = await load_cached_manifest(pool)
     if manifest is None:
         raise HTTPException(status_code=400, detail="Manifest not loaded yet — open Weapons and Refresh.")
@@ -433,7 +451,11 @@ async def _sweep_candidates(pool, uid: int, profile: dict) -> list:
     ratings = await perk_ratings_repo.load(pool, uid)
     scored = score_by_perks(weapons, ratings)
     tags = await user_tables.get_tags(pool, uid)
-    return dismantle_logic.classify(scored, tags)
+    candidates = dismantle_logic.classify(scored, tags)
+    # Weapons only, never postmaster. Dropped here rather than in dismantle.py,
+    # which is pure and only ever sees manifest-derived bucket hashes.
+    in_postmaster = _postmaster_instance_ids(profile)
+    return [c for c in candidates if c.instance_id not in in_postmaster]
 
 
 @app.post("/api/dismantle/preview")
@@ -497,17 +519,6 @@ async def dismantle_sweep(
     """
     settings = get_settings()
     uid = current_user["user_id"]
-    profile = await _load_profile_or_400(pool, uid)
-    candidates = await _sweep_candidates(pool, uid, profile)
-
-    allowed, rejected = dismantle_logic.enforce_blocklist(
-        candidates, body.instanceIds, body.overrides
-    )
-    occupancy = dismantle_logic.bucket_occupancy(profile, body.characterId)
-    plan = dismantle_logic.plan_batch(candidates, allowed, occupancy)
-
-    by_id = {c.instance_id: c for c in candidates}
-    locked_now = _locked_instance_ids(profile)
     throttle = request.app.state.throttle
     staged: list[str] = []
     failed: list[dict] = []
@@ -522,22 +533,37 @@ async def dismantle_sweep(
         if cached_mid != mid:
             raise HTTPException(status_code=400, detail="Your cached inventory is for a "
                                 "different account — open Weapons and Refresh, then retry.")
-        # Never re-record lock state for an instance already staged. Staging unlocks
-        # the item, so a second pass would read it as unlocked and overwrite the true
-        # original with False — destroying exactly what undo needs to restore.
-        already_staged = await user_tables.get_staged_sweep(pool, uid, mid)
+        # Re-fetch rather than trust the cache (up to user_cache_ttl_seconds
+        # stale): both the locked blocklist and the was_locked recorded for undo
+        # are read off this profile, so a lock the user set in-game minutes ago
+        # must be visible here or the weapon is both swept and unrestorable.
+        # One extra Bungie call on a rare, irreversible operation.
+        profile = await throttle.run(lambda: get_profile(mtype, mid, access, settings, client))
+        await _save_profile(pool, uid, profile, mid)
+
+        candidates = await _sweep_candidates(pool, uid, profile)
+        allowed, rejected = dismantle_logic.enforce_blocklist(
+            candidates, body.instanceIds, body.overrides
+        )
+        occupancy = dismantle_logic.bucket_occupancy(profile, body.characterId)
+        plan = dismantle_logic.plan_batch(candidates, allowed, occupancy)
+
+        by_id = {c.instance_id: c for c in candidates}
+        locked_now = _locked_instance_ids(profile)
         for instance_id in plan.staged:
             candidate = by_id[instance_id]
             try:
                 await _move_one(client, settings, access, mtype, profile, instance_id,
                                 candidate.item_hash, body.characterId, False, throttle)
-                if instance_id not in already_staged:
-                    # Written now — after transfer succeeds, before unlock — so a
-                    # network error on the unlock call below can never lose the
-                    # undo record for an item that ends up unlocked.
-                    await user_tables.stage_sweep_items(
-                        pool, uid, mid, [(instance_id, instance_id in locked_now)]
-                    )
+                # Written now — after transfer succeeds, before unlock — so a
+                # network error on the unlock call below can never lose the
+                # undo record for an item that ends up unlocked. The write is
+                # insert-only, so re-staging an already-staged instance (a
+                # retry, a second tab) cannot overwrite the true original lock
+                # state with the False it now reads.
+                await user_tables.stage_sweep_items(
+                    pool, uid, mid, [(instance_id, instance_id in locked_now)]
+                )
                 await throttle.run(lambda iid=instance_id: set_item_lock_state(
                     # iid=instance_id binds the loop variable's *current* value at
                     # lambda-creation time. Without it every deferred closure would
@@ -568,6 +594,25 @@ def _instance_item_hashes(profile: dict) -> dict[str, int]:
             if instance_id:
                 out[instance_id] = item.get("itemHash", 0)
     return out
+
+
+def _profile_has_inventory_data(profile: dict) -> bool:
+    """True when the profile demonstrably carries its inventory components.
+
+    Bungie answers HTTP 200 with ErrorCode 1 but the component's `data` key
+    ABSENT when a component is unavailable (reduced OAuth scope, privacy
+    settings, partial outage), and that reply is cached like any other. Walking
+    such a profile yields nothing, which is indistinguishable from "the item is
+    gone" unless the envelopes themselves are checked. A reply carrying no
+    character inventories at all counts as degraded too: every account has at
+    least one character, so an empty map is Bungie withholding, not an empty
+    inventory."""
+    if not all(
+        "data" in profile.get(key, {})
+        for key in ("profileInventory", "characterInventories", "characterEquipment")
+    ):
+        return False
+    return bool(profile["characterInventories"]["data"])
 
 
 def _lock_character_id(profile: dict, instance_id: str, fallback: str) -> str:
@@ -624,6 +669,17 @@ async def dismantle_undo(
             return {"restored": [], "failed": []}
 
         profile = await _load_profile_or_400(pool, uid)
+        cached_mid = await cache.get(pool, uid, "profile_membership_id")
+        if cached_mid != mid:
+            raise HTTPException(status_code=400, detail="Your cached inventory is for a "
+                                "different account — open Weapons and Refresh, then retry.")
+        # "Absent from the profile" only means "already dismantled in-game" if
+        # the profile actually carries inventory. Without this an inventory-less
+        # reply would classify every staged item as restored and delete every
+        # row — and a row is the only record of a weapon's pre-sweep lock state.
+        if not _profile_has_inventory_data(profile):
+            raise HTTPException(status_code=400, detail="Inventory data unavailable — open "
+                                "Weapons and Refresh, then try Undo again.")
         item_hashes = _instance_item_hashes(profile)
         for instance_id, was_locked in staged.items():
             item_hash = item_hashes.get(instance_id)

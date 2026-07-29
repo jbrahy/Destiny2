@@ -29,11 +29,16 @@ async def test_staged_rows_round_trip_with_lock_state(two_users):
     assert await user_tables.get_staged_sweep(pool, uid, _MID) == {"a": True, "b": False}
 
 
-async def test_staging_the_same_instance_twice_updates_rather_than_duplicates(two_users):
+async def test_staging_the_same_instance_twice_keeps_the_first_lock_state(two_users):
+    """Re-staging an instance must not duplicate it, and must not change what
+    was recorded. Staging unlocks the item, so any second pass reads it as
+    unlocked; letting that False win would overwrite the true original — the
+    only record of it — and undo could never restore the lock. The upsert is
+    insert-only precisely so no read-then-write race can lose this."""
     pool, uid, _ = two_users
     await user_tables.stage_sweep_items(pool, uid, _MID, [("a", True)])
     await user_tables.stage_sweep_items(pool, uid, _MID, [("a", False)])
-    assert await user_tables.get_staged_sweep(pool, uid, _MID) == {"a": False}
+    assert await user_tables.get_staged_sweep(pool, uid, _MID) == {"a": True}
 
 
 async def test_clear_removes_only_the_named_instances(two_users):

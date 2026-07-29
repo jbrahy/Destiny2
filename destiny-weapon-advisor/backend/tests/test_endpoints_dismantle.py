@@ -55,8 +55,18 @@ async def _noop_lock(mtype, instance_id, character_id, state, access, settings, 
 
 
 async def _fake_get_profile(mtype, mid, access, settings, http_client):
-    """Stand-in for the post-sweep cache refresh. Must never hit Bungie."""
+    """Stand-in for the post-write cache refresh. Must never hit Bungie."""
     return _profile_with("inst-1", 777)
+
+
+def _fake_get_profile_for(profile: dict):
+    """Stand-in that always answers with `profile`. Sweep re-fetches the
+    profile from Bungie before it evaluates candidates and lock state (the
+    cache is up to user_cache_ttl_seconds stale, and staging is irreversible),
+    so a sweep test's seeded inventory must be what that fetch returns."""
+    async def _fake(mtype, mid, access, settings, http_client):
+        return profile
+    return _fake
 
 
 async def _seed_manifest(pool) -> None:
@@ -210,18 +220,18 @@ async def test_sweep_transfers_then_unlocks_in_that_order(app_client, clean_db, 
     async def fake_lock(mtype, instance_id, character_id, state, access, settings, http_client):
         calls.append(("lock", instance_id, state))
 
-    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
-    monkeypatch.setattr("app.main.set_item_lock_state", fake_lock)
-    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
-
     uid = await login_user(app_client, monkeypatch)
     await _seed_manifest(clean_db)
     vault_items = [
         {"itemInstanceId": "inst-1", "itemHash": 777, "state": 1, "bucketHash": 138197802},
         {"itemInstanceId": "inst-2", "itemHash": 777, "state": 1, "bucketHash": 138197802},
     ]
-    await cache_repo.set(clean_db, uid, "profile_cache",
-                         json.dumps(_profile_multi(vault_items)), 3600)
+    profile = _profile_multi(vault_items)
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", fake_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile_for(profile))
+
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
     await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
     await user_tables.set_tag(clean_db, uid, "inst-1", "junk")
     await user_tables.set_tag(clean_db, uid, "inst-2", "junk")
@@ -240,14 +250,14 @@ async def test_sweep_transfers_then_unlocks_in_that_order(app_client, clean_db, 
 
 
 async def test_sweep_records_prior_lock_state_for_undo(app_client, clean_db, monkeypatch):
+    profile = _profile_with("inst-1", 777, locked=True)
     monkeypatch.setattr("app.main.transfer_item", _noop_transfer)
     monkeypatch.setattr("app.main.set_item_lock_state", _noop_lock)
-    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile_for(profile))
 
     uid = await login_user(app_client, monkeypatch)
     await _seed_manifest(clean_db)
-    await cache_repo.set(clean_db, uid, "profile_cache",
-                         json.dumps(_profile_with("inst-1", 777, locked=True)), 3600)
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
     await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
     await user_tables.set_tag(clean_db, uid, "inst-1", "junk")
 
@@ -262,21 +272,32 @@ async def test_sweep_does_not_overwrite_recorded_lock_state_on_restage(app_clien
     """Invariant: staging unlocks an item, so if a sweep runs a second time over
     an instance that is already staged, re-reading its (now unlocked) state must
     NOT clobber the True recorded on the first pass — that would destroy what
-    undo needs to restore."""
+    undo needs to restore. The protection is the insert-only upsert, so this
+    holds even without a read-then-write guard that a concurrent sweep could
+    slip past."""
+    locked_profile = _profile_with("inst-1", 777, locked=True)
+    unlocked_profile = _profile_with("inst-1", 777)
+    fetches = []
+
+    async def fake_get_profile(mtype, mid, access, settings, http_client):
+        """Only the first fetch — the first sweep's pre-check — still sees
+        inst-1 locked; every fetch after it sees it unlocked, mirroring what
+        that sweep's unlock call does to the real inventory."""
+        fetches.append(1)
+        return locked_profile if len(fetches) == 1 else unlocked_profile
+
     monkeypatch.setattr("app.main.transfer_item", _noop_transfer)
     monkeypatch.setattr("app.main.set_item_lock_state", _noop_lock)
-    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+    monkeypatch.setattr("app.main.get_profile", fake_get_profile)
 
     uid = await login_user(app_client, monkeypatch)
     await _seed_manifest(clean_db)
-    await cache_repo.set(clean_db, uid, "profile_cache",
-                         json.dumps(_profile_with("inst-1", 777, locked=True)), 3600)
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(locked_profile), 3600)
     await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
     await user_tables.set_tag(clean_db, uid, "inst-1", "junk")
 
-    # First sweep: records the true prior lock state (True) and, via
-    # _fake_get_profile, refreshes the cache to show inst-1 unlocked — mirroring
-    # what a real unlock would do to the cached inventory.
+    # First sweep: records the true prior lock state (True), then the refresh
+    # leaves inst-1 unlocked — mirroring what a real unlock would do.
     resp1 = await app_client.post("/api/dismantle/sweep", json={
         "characterId": _CHAR_ID, "instanceIds": ["inst-1"], "overrides": ["inst-1"],
     }, headers=_csrf_header(app_client))
@@ -284,7 +305,7 @@ async def test_sweep_does_not_overwrite_recorded_lock_state_on_restage(app_clien
     assert await user_tables.get_staged_sweep(clean_db, uid, "bm1") == {"inst-1": True}
 
     # Second sweep over the same already-staged instance: it is no longer
-    # blocked (the cache now shows it unlocked), so no override is needed.
+    # blocked (the profile now shows it unlocked), so no override is needed.
     resp2 = await app_client.post("/api/dismantle/sweep", json={
         "characterId": _CHAR_ID, "instanceIds": ["inst-1"], "overrides": [],
     }, headers=_csrf_header(app_client))
@@ -303,18 +324,18 @@ async def test_sweep_partial_failure_reports_failed_and_keeps_successes_staged(a
         if instance_id == "inst-2":
             raise BungieApiError("simulated transfer failure")
 
-    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
-    monkeypatch.setattr("app.main.set_item_lock_state", _noop_lock)
-    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
-
-    uid = await login_user(app_client, monkeypatch)
-    await _seed_manifest(clean_db)
     vault_items = [
         {"itemInstanceId": "inst-1", "itemHash": 777, "state": 0, "bucketHash": 138197802},
         {"itemInstanceId": "inst-2", "itemHash": 777, "state": 0, "bucketHash": 138197802},
     ]
-    await cache_repo.set(clean_db, uid, "profile_cache",
-                         json.dumps(_profile_multi(vault_items)), 3600)
+    profile = _profile_multi(vault_items)
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", _noop_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile_for(profile))
+
+    uid = await login_user(app_client, monkeypatch)
+    await _seed_manifest(clean_db)
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
     await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
     await user_tables.set_tag(clean_db, uid, "inst-1", "junk")
     await user_tables.set_tag(clean_db, uid, "inst-2", "junk")
@@ -354,19 +375,19 @@ async def test_sweep_unlock_timeout_preserves_recorded_lock_state(app_client, cl
         if instance_id == "inst-2":
             raise httpx.ReadTimeout("simulated network timeout")
 
-    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
-    monkeypatch.setattr("app.main.set_item_lock_state", fake_lock)
-    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
-
-    uid = await login_user(app_client, monkeypatch)
-    await _seed_manifest(clean_db)
     vault_items = [
         {"itemInstanceId": "inst-1", "itemHash": 777, "state": 1, "bucketHash": 138197802},
         {"itemInstanceId": "inst-2", "itemHash": 777, "state": 1, "bucketHash": 138197802},
         {"itemInstanceId": "inst-3", "itemHash": 777, "state": 1, "bucketHash": 138197802},
     ]
-    await cache_repo.set(clean_db, uid, "profile_cache",
-                         json.dumps(_profile_multi(vault_items)), 3600)
+    profile = _profile_multi(vault_items)
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", fake_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile_for(profile))
+
+    uid = await login_user(app_client, monkeypatch)
+    await _seed_manifest(clean_db)
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
     await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
     for iid in ("inst-1", "inst-2", "inst-3"):
         await user_tables.set_tag(clean_db, uid, iid, "junk")
@@ -404,17 +425,17 @@ async def test_sweep_override_cannot_unblock_an_equipped_weapon(app_client, clea
                             access, settings, http_client):
         calls.append(instance_id)
 
-    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
-    monkeypatch.setattr("app.main.set_item_lock_state", _noop_lock)
-    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
-
-    uid = await login_user(app_client, monkeypatch)
-    await _seed_manifest(clean_db)
     equipped_items = [
         {"itemInstanceId": "inst-3", "itemHash": 777, "state": 0, "bucketHash": 138197802},
     ]
-    await cache_repo.set(clean_db, uid, "profile_cache",
-                         json.dumps(_profile_multi([], equipped_items)), 3600)
+    profile = _profile_multi([], equipped_items)
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", _noop_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile_for(profile))
+
+    uid = await login_user(app_client, monkeypatch)
+    await _seed_manifest(clean_db)
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
     await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
     await user_tables.set_tag(clean_db, uid, "inst-3", "junk")
 
@@ -430,14 +451,14 @@ async def test_sweep_override_cannot_unblock_an_equipped_weapon(app_client, clea
 
 async def test_sweep_rejects_an_instance_the_preview_never_offered(app_client, clean_db, monkeypatch):
     """Server-side re-check: a client cannot smuggle in an arbitrary item."""
+    profile = _profile_with("inst-1", 777)
     monkeypatch.setattr("app.main.transfer_item", _noop_transfer)
     monkeypatch.setattr("app.main.set_item_lock_state", _noop_lock)
-    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile_for(profile))
 
     uid = await login_user(app_client, monkeypatch)
     await _seed_manifest(clean_db)
-    await cache_repo.set(clean_db, uid, "profile_cache",
-                         json.dumps(_profile_with("inst-1", 777)), 3600)
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
     await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
     # no junk tag, so inst-1 is not a candidate at all
 
@@ -805,3 +826,190 @@ async def test_undo_after_account_switch_does_not_wipe_the_other_accounts_record
     assert await user_tables.get_staged_sweep(clean_db, uid, "bm1") == {"inst-1": True}
     # And it was never (incorrectly) visible under B's scope.
     assert await user_tables.get_staged_sweep(clean_db, uid, "bm2") == {}
+
+
+async def test_undo_with_a_degraded_profile_aborts_and_keeps_every_row(app_client, clean_db, monkeypatch):
+    """FINAL-REVIEW FINDING 1. Bungie answers HTTP 200 with ErrorCode 1 but the
+    component `data` ABSENT when a component is unavailable (reduced OAuth
+    scope, privacy settings, partial outage), and that reply gets cached like
+    any other. Every staged instance is then "missing from the profile", which
+    the handler otherwise reads as "already dismantled in-game": it would
+    report a clean restore and DELETE every row — and the row is the only
+    record of a weapon's pre-sweep lock state, which cannot be re-derived once
+    the weapon is unlocked. Undo must refuse the whole batch and clear
+    nothing."""
+    calls = []
+
+    async def fake_transfer(mtype, item_hash, instance_id, character_id, to_vault,
+                            access, settings, http_client):
+        calls.append(("transfer", instance_id))
+
+    async def fake_lock(mtype, instance_id, character_id, state, access, settings, http_client):
+        calls.append(("lock", instance_id, state))
+
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", fake_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+
+    uid = await login_user(app_client, monkeypatch)
+    await cache_repo.set(clean_db, uid, "profile_cache",
+                         json.dumps({"characters": {"data": {}}}), 3600)
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
+    await user_tables.stage_sweep_items(clean_db, uid, "bm1",
+                                        [("inst-1", True), ("inst-2", False)])
+
+    resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
+                                 headers=_csrf_header(app_client))
+    assert resp.status_code == 400, resp.text
+    assert "Inventory data unavailable" in resp.json()["detail"]
+    # Nothing was attempted against Bungie...
+    assert calls == []
+    # ...and the load-bearing assertion: every undo record survived intact.
+    assert await user_tables.get_staged_sweep(clean_db, uid, "bm1") == {
+        "inst-1": True, "inst-2": False,
+    }
+
+
+# Destiny's postmaster ("Lost Items") bucket. Items sit here inside
+# characterInventories, so nothing but the raw profile can tell them apart.
+_POSTMASTER_BUCKET = 215593132
+
+
+async def test_sweep_never_touches_a_weapon_in_the_postmaster(app_client, clean_db, monkeypatch):
+    """FINAL-REVIEW FINDING 3. Postmaster items live in characterInventories,
+    but a Candidate's bucket_hash comes from the manifest definition, so a
+    postmaster hand cannon reports Kinetic and sails through the batch planner.
+    When it is already on the target character _move_one sees source == target
+    and transfers nothing — so the sweep would unlock it in place, in the
+    postmaster, and report it as staged. Weapons only, never postmaster: it
+    must not be a candidate at all."""
+    calls = []
+
+    async def fake_transfer(mtype, item_hash, instance_id, character_id, to_vault,
+                            access, settings, http_client):
+        calls.append(("transfer", instance_id))
+
+    async def fake_lock(mtype, instance_id, character_id, state, access, settings, http_client):
+        calls.append(("lock", instance_id, state))
+
+    profile = _profile_multi([])
+    profile["characterInventories"]["data"][_CHAR_ID]["items"] = [
+        {"itemInstanceId": "pm-1", "itemHash": 777, "state": 1,
+         "bucketHash": _POSTMASTER_BUCKET},
+    ]
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", fake_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile_for(profile))
+
+    uid = await login_user(app_client, monkeypatch)
+    await _seed_manifest(clean_db)
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
+    await user_tables.set_tag(clean_db, uid, "pm-1", "junk")
+
+    # Preview must not even offer it.
+    prev = await app_client.post("/api/dismantle/preview", json={"characterId": _CHAR_ID})
+    assert prev.status_code == 200, prev.text
+    assert [c["instanceId"] for c in prev.json()["candidates"]] == []
+
+    resp = await app_client.post("/api/dismantle/sweep", json={
+        "characterId": _CHAR_ID, "instanceIds": ["pm-1"], "overrides": ["pm-1"],
+    }, headers=_csrf_header(app_client))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["staged"] == []
+    assert body["rejected"] == [{"instanceId": "pm-1", "reason": "not_a_candidate"}]
+    # The load-bearing assertion: no transfer, and above all no unlock.
+    assert calls == []
+    assert await user_tables.get_staged_sweep(clean_db, uid, "bm1") == {}
+
+
+async def test_undo_refuses_when_the_cached_profile_is_another_accounts(app_client, clean_db, monkeypatch):
+    """FINAL-REVIEW FINDING 5. Sweep and both transfer endpoints refuse to act
+    on a profile belonging to a different Destiny account; undo read staged
+    rows for the token's membership but the profile with no such check, so it
+    would decide "restore or already dismantled" from the wrong inventory —
+    and clear rows on the strength of it."""
+    calls = []
+
+    async def fake_transfer(mtype, item_hash, instance_id, character_id, to_vault,
+                            access, settings, http_client):
+        calls.append(("transfer", instance_id))
+
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", _noop_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+
+    uid = await login_user(app_client, monkeypatch)  # token membership: "bm1"
+    await cache_repo.set(clean_db, uid, "profile_cache",
+                         json.dumps(_profile_with("inst-9", 999)), 3600)
+    # The cached inventory belongs to a different Destiny account.
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm2", 3600)
+    await user_tables.stage_sweep_items(clean_db, uid, "bm1", [("inst-1", True)])
+
+    resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
+                                 headers=_csrf_header(app_client))
+    assert resp.status_code == 400, resp.text
+    assert "different account" in resp.json()["detail"]
+    assert calls == []
+    assert await user_tables.get_staged_sweep(clean_db, uid, "bm1") == {"inst-1": True}
+
+
+async def test_sweep_reads_a_freshly_fetched_profile_not_the_stale_cache(app_client, clean_db, monkeypatch):
+    """FINAL-REVIEW FINDING 6. The cache lives for user_cache_ttl_seconds (300),
+    and BOTH halves of the lock protection read the profile: the `locked` block
+    that keeps the weapon out of the sweep, and the was_locked recorded for
+    undo. A user who locks a weapon in-game and sweeps inside that window would
+    otherwise have it neither blocked NOR recorded — unlocked with no way back.
+    So sweep must re-fetch from Bungie before evaluating anything."""
+    calls = []
+
+    async def fake_transfer(mtype, item_hash, instance_id, character_id, to_vault,
+                            access, settings, http_client):
+        calls.append(("transfer", instance_id))
+
+    async def fake_lock(mtype, instance_id, character_id, state, access, settings, http_client):
+        calls.append(("lock", instance_id, state))
+
+    # What Bungie really holds: inst-1 was locked in-game a minute ago.
+    live_profile = _profile_with("inst-1", 777, locked=True)
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", fake_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile_for(live_profile))
+
+    uid = await login_user(app_client, monkeypatch)
+    await _seed_manifest(clean_db)
+    # What the cache still says: unlocked, from before that lock.
+    await cache_repo.set(clean_db, uid, "profile_cache",
+                         json.dumps(_profile_with("inst-1", 777)), 3600)
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
+    await user_tables.set_tag(clean_db, uid, "inst-1", "junk")
+
+    # No override is sent — against the stale cache inst-1 looks unblocked and
+    # would be swept; against the live profile it is `locked` and must not be.
+    resp = await app_client.post("/api/dismantle/sweep", json={
+        "characterId": _CHAR_ID, "instanceIds": ["inst-1"], "overrides": [],
+    }, headers=_csrf_header(app_client))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["staged"] == []
+    assert body["rejected"] == [{"instanceId": "inst-1", "reason": "locked"}]
+    assert calls == []
+
+
+async def test_preview_reports_the_staged_sweep_for_the_undo_banner(app_client, clean_db, monkeypatch):
+    """FINAL-REVIEW FINDING 7. preview's top-level `staged` map is the only
+    signal that makes the Undo affordance appear, and its membership scoping
+    was untested — a bogus membership id here silently hides Undo for a user
+    with weapons sitting unlocked."""
+    uid = await login_user(app_client, monkeypatch)
+    await _seed_manifest(clean_db)
+    await cache_repo.set(clean_db, uid, "profile_cache",
+                         json.dumps(_profile_with("inst-1", 777)), 3600)
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
+    await user_tables.stage_sweep_items(clean_db, uid, "bm1",
+                                        [("inst-1", True), ("inst-2", False)])
+
+    resp = await app_client.post("/api/dismantle/preview", json={"characterId": _CHAR_ID})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["staged"] == {"inst-1": True, "inst-2": False}
