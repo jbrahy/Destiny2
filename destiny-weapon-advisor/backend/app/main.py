@@ -13,9 +13,11 @@ from app.bungie_client import (
     get_memberships, get_profile, pull_from_postmaster, transfer_item,
 )
 from app.bungie_client import BungieApiError
+from app.bungie_client import set_item_lock_state
 from app.bungie_oauth import refresh_tokens
 from app.config import get_settings
 from app import db
+from app import dismantle as dismantle_logic
 from app.deps import get_pool
 from app.manifest import Manifest, load_cached_manifest, load_manifest
 from app.perk_ratings import TIER_SCORE
@@ -124,6 +126,20 @@ class PullPostmasterBody(BaseModel):
     instanceId: str
     characterId: str
     stackSize: int = 1
+
+
+class DismantlePreviewBody(BaseModel):
+    characterId: str
+
+
+class DismantleSweepBody(BaseModel):
+    characterId: str
+    instanceIds: list[str]
+    overrides: list[str] = []
+
+
+class DismantleUndoBody(BaseModel):
+    characterId: str
 
 
 @app.get("/api/health")
@@ -385,6 +401,61 @@ async def put_tag(
     uid = current_user["user_id"]
     await user_tables.set_tag(pool, uid, body.instanceId, body.tag)
     return {"ok": True}
+
+
+def _candidate_to_dict(c) -> dict:
+    return {
+        "instanceId": c.instance_id,
+        "itemHash": c.item_hash,
+        "name": c.name,
+        "icon": c.icon,
+        "power": c.power,
+        # Serialised as a string so it keys directly into plan.perBucket, whose
+        # keys are stringified bucket hashes. Without this the UI cannot tell
+        # which bucket a candidate consumes and can only sum free space across
+        # all three, overstating what fits for a bucket-concentrated selection.
+        "bucketHash": str(c.bucket_hash),
+        "verdict": c.verdict,
+        "source": c.source,
+        "reason": c.reason,
+        "blocked": c.blocked,
+        "overridable": c.overridable,
+    }
+
+
+async def _sweep_candidates(pool, uid: int, profile: dict) -> list:
+    """Score the cached inventory and classify it into sweep candidates."""
+    manifest = await load_cached_manifest(pool)
+    if manifest is None:
+        raise HTTPException(status_code=400, detail="Manifest not loaded yet — open Weapons and Refresh.")
+    weapons = assemble_weapons(profile, manifest)
+    ratings = await perk_ratings_repo.load(pool, uid)
+    scored = score_by_perks(weapons, ratings)
+    tags = await user_tables.get_tags(pool, uid)
+    return dismantle_logic.classify(scored, tags)
+
+
+@app.post("/api/dismantle/preview")
+async def dismantle_preview(
+    body: DismantlePreviewBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    """What a sweep would stage. Reports blocked items rather than hiding them."""
+    uid = current_user["user_id"]
+    profile = await _load_profile_or_400(pool, uid)
+    candidates = await _sweep_candidates(pool, uid, profile)
+    occupancy = dismantle_logic.bucket_occupancy(profile, body.characterId)
+    # Plan over the non-blocked candidates so the UI can show what would fit.
+    plan = dismantle_logic.plan_batch(
+        candidates, [c.instance_id for c in candidates if not c.blocked], occupancy
+    )
+    return {
+        "candidates": [_candidate_to_dict(c) for c in candidates],
+        "plan": {"staged": plan.staged, "deferred": plan.deferred,
+                 "perBucket": {str(k): v for k, v in plan.per_bucket.items()}},
+        "staged": await user_tables.get_staged_sweep(pool, uid),
+    }
 
 
 @app.get("/api/activities")
