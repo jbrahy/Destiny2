@@ -78,28 +78,30 @@ async def test_load_cached_manifest_none_when_empty(clean_db):
 # Test 3: load_manifest returns cached Manifest when version matches
 # ---------------------------------------------------------------------------
 
+_META_PAYLOAD = {
+    "Response": {
+        "version": "v1",
+        "jsonWorldComponentContentPaths": {
+            "en": {
+                "DestinyInventoryItemDefinition": "/common/destiny2_content/json/en/items.json",
+                "DestinyStatDefinition": "/common/destiny2_content/json/en/stats.json",
+                "DestinyPlugSetDefinition": "/common/destiny2_content/json/en/plugsets.json",
+            }
+        },
+    }
+}
+
+
 async def test_load_manifest_uses_cache_when_version_matches(clean_db):
     items_data = {"555": {"displayProperties": {"name": "CachedGun", "description": "", "icon": ""}}}
     stats_data = {"7": {"displayProperties": {"name": "Stability"}}}
+    plug_data = {"5002": {"reusablePlugItems": [{"plugItemHash": 11, "currentlyCanRoll": True}]}}
 
     await cache.manifest_set(clean_db, "manifest_items", json.dumps(items_data), "v1")
     await cache.manifest_set(clean_db, "manifest_stats", json.dumps(stats_data), "v1")
+    await cache.manifest_set(clean_db, "manifest_plugsets", json.dumps(plug_data), "v1")
 
-    meta_payload = {
-        "Response": {
-            "version": "v1",
-            "jsonWorldComponentContentPaths": {
-                "en": {
-                    "DestinyInventoryItemDefinition": "/common/destiny2_content/json/en/items.json",
-                    "DestinyStatDefinition": "/common/destiny2_content/json/en/stats.json",
-                }
-            },
-        }
-    }
-
-    fake_client = FakeClient({
-        "/Platform/Destiny2/Manifest/": meta_payload,
-    })
+    fake_client = FakeClient({"/Platform/Destiny2/Manifest/": _META_PAYLOAD})
 
     throttle = Throttle(2)
     m = await load_manifest(fake_client, clean_db, throttle)
@@ -107,7 +109,46 @@ async def test_load_manifest_uses_cache_when_version_matches(clean_db):
     assert m is not None
     assert m.name(555) == "CachedGun"
     assert m.stat_name(7) == "Stability"
+    assert m.plug_set_hashes(5002) == [11]
 
     # Only the meta URL should have been fetched — no definition downloads
     assert len(fake_client.fetched_urls) == 1
     assert "/Platform/Destiny2/Manifest/" in fake_client.fetched_urls[0]
+
+
+async def test_load_manifest_redownloads_when_plug_sets_are_missing(clean_db):
+    """A cache written before plug sets existed must pick them up on the next
+    load, not sit without a roll pool until Bungie ships a new manifest version.
+    """
+    await cache.manifest_set(clean_db, "manifest_items", json.dumps({"555": {}}), "v1")
+    await cache.manifest_set(clean_db, "manifest_stats", json.dumps({"7": {}}), "v1")
+    # No manifest_plugsets row — the pre-plug-set state.
+
+    fake_client = FakeClient({
+        "/Platform/Destiny2/Manifest/": _META_PAYLOAD,
+        "items.json": {"555": {"displayProperties": {"name": "FreshGun"}}},
+        "stats.json": {"7": {"displayProperties": {"name": "Stability"}}},
+        "plugsets.json": {"5002": {"reusablePlugItems": [
+            {"plugItemHash": 11, "currentlyCanRoll": True}]}},
+    })
+
+    m = await load_manifest(fake_client, clean_db, Throttle(2))
+
+    assert m.name(555) == "FreshGun"
+    assert m.plug_set_hashes(5002) == [11]
+    assert any("plugsets.json" in u for u in fake_client.fetched_urls)
+    # And it is persisted, so the next load hits cache.
+    assert await cache.manifest_get(clean_db, "manifest_plugsets") is not None
+
+
+async def test_load_cached_manifest_without_plug_sets_still_loads(clean_db):
+    """Degrade, don't crash: old caches load with an empty roll pool."""
+    await cache.manifest_set(clean_db, "manifest_items",
+                             json.dumps({"1": {"displayProperties": {"name": "Old"}}}), "v1")
+    await cache.manifest_set(clean_db, "manifest_stats", json.dumps({"2": {}}), "v1")
+
+    m = await load_cached_manifest(clean_db)
+
+    assert m is not None
+    assert m.name(1) == "Old"
+    assert m.plug_set_hashes(5002) == []
