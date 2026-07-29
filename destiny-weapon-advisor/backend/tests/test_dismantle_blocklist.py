@@ -189,3 +189,32 @@ def test_enforce_blocklist_rejects_an_id_that_is_not_a_candidate():
     allowed, rejected = enforce_blocklist(cands, ["ghost-id"], [])
     assert allowed == []
     assert rejected == [{"instanceId": "ghost-id", "reason": "not_a_candidate"}]
+
+
+def test_enforce_blocklist_deduplicates_a_repeated_allowed_id():
+    """A client posting the same id twice must not double-charge capacity
+    downstream in plan_batch — collapse to a single decision."""
+    cands = classify([_scored(_weapon("a"), Verdict.DISMANTLE)], {"a": "junk"})
+    allowed, rejected = enforce_blocklist(cands, ["a", "a"], [])
+    assert allowed == ["a"]
+    assert rejected == []
+
+
+def test_enforce_blocklist_deduplicates_a_repeated_blocked_id():
+    """A repeated id must not produce a duplicate rejected entry either."""
+    cands = classify([_scored(_weapon("a", is_exotic=True), Verdict.DISMANTLE)], {"a": "junk"})
+    allowed, rejected = enforce_blocklist(cands, ["a", "a"], [])
+    assert allowed == []
+    assert rejected == [{"instanceId": "a", "reason": BLOCK_EXOTIC}]
+
+
+def test_enforce_blocklist_preserves_order_with_interleaved_duplicates():
+    cands = classify(
+        [_scored(_weapon("a"), Verdict.DISMANTLE),
+         _scored(_weapon("b"), Verdict.DISMANTLE),
+         _scored(_weapon("c"), Verdict.DISMANTLE)],
+        {"a": "junk", "b": "junk", "c": "junk"},
+    )
+    allowed, rejected = enforce_blocklist(cands, ["a", "b", "a", "c"], [])
+    assert allowed == ["a", "b", "c"]
+    assert rejected == []

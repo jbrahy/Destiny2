@@ -113,8 +113,12 @@ def enforce_blocklist(
     override_set = set(overrides)
     allowed: list[str] = []
     rejected: list[dict] = []
+    seen: set[str] = set()
 
     for instance_id in requested_ids:
+        if instance_id in seen:
+            continue
+        seen.add(instance_id)
         candidate = by_id.get(instance_id)
         if candidate is None:
             rejected.append({"instanceId": instance_id, "reason": "not_a_candidate"})
@@ -163,8 +167,11 @@ def plan_batch(
     staged_per_bucket = {bucket: 0 for bucket in WEAPON_BUCKETS}
     staged: list[str] = []
     deferred: list[str] = []
+    staged_set: set[str] = set()
 
     for instance_id in allowed_ids:
+        if instance_id in staged_set:
+            continue
         candidate = by_id.get(instance_id)
         bucket = candidate.bucket_hash if candidate else None
         if bucket not in free or free[bucket] <= 0:
@@ -173,6 +180,7 @@ def plan_batch(
         free[bucket] -= 1
         staged_per_bucket[bucket] += 1
         staged.append(instance_id)
+        staged_set.add(instance_id)
 
     per_bucket = {
         bucket: {

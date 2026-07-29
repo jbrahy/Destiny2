@@ -79,3 +79,30 @@ def test_bucket_occupancy_of_an_unknown_character_is_all_zero():
     assert bucket_occupancy({"characterInventories": {"data": {}}}, "nope") == {
         KINETIC: 0, ENERGY: 0, POWER: 0,
     }
+
+
+def test_plan_batch_charges_a_repeated_instance_id_only_once():
+    """allowed_ids with a duplicate must not double-charge bucket capacity nor
+    double-stage the item — enforce_blocklist should already dedupe, but
+    plan_batch must be correct regardless of what a caller hands it."""
+    cands = [_cand("k0")] + [_cand(f"k{i}") for i in range(1, 9)]
+    plan = plan_batch(cands, ["k0", "k0"] + [f"k{i}" for i in range(1, 9)], {})
+    assert plan.staged == [f"k{i}" for i in range(9)]
+    assert plan.deferred == []
+    assert plan.per_bucket[KINETIC]["staged"] == 9
+
+
+def test_bucket_occupancy_ignores_character_equipment():
+    """Equipped weapons live in characterEquipment, a separate structure, and
+    must never count against inventory capacity."""
+    profile = {
+        "characterInventories": {"data": {
+            "char-1": {"items": [{"bucketHash": KINETIC}]},
+        }},
+        "characterEquipment": {"data": {
+            "char-1": {"items": [
+                {"bucketHash": KINETIC}, {"bucketHash": ENERGY}, {"bucketHash": POWER},
+            ]},
+        }},
+    }
+    assert bucket_occupancy(profile, "char-1") == {KINETIC: 1, ENERGY: 0, POWER: 0}
