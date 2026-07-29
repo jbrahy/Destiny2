@@ -1,16 +1,23 @@
 import { Verdict } from "../types";
+import { elementColor } from "../visual";
+
+export type SortKey =
+  | "power_desc" | "power_asc" | "verdict" | "name" | "type" | "element";
 
 export interface FilterState {
   verdict: Verdict | "all";
   weaponType: string;
+  element: string;
   search: string;
+  sort: SortKey;
 }
 
 export function Filters({
-  state, types, onChange,
+  state, types, elements, onChange,
 }: {
   state: FilterState;
   types: string[];
+  elements: string[];
   onChange: (s: FilterState) => void;
 }) {
   return (
@@ -40,6 +47,32 @@ export function Filters({
         {types.map((t) => (
           <option key={t} value={t}>{t}</option>
         ))}
+      </select>
+      <select
+        value={state.element}
+        onChange={(e) => onChange({ ...state, element: e.target.value })}
+        title="Filter by damage type"
+        style={{
+          color: state.element === "all" ? "var(--text)" : elementColor(state.element),
+          fontWeight: state.element === "all" ? 400 : 700,
+        }}
+      >
+        <option value="all">All damage types</option>
+        {elements.map((el) => (
+          <option key={el} value={el}>{el}</option>
+        ))}
+      </select>
+      <select
+        value={state.sort}
+        onChange={(e) => onChange({ ...state, sort: e.target.value as SortKey })}
+        title="Sort weapons"
+      >
+        <option value="power_desc">Power: High → Low</option>
+        <option value="power_asc">Power: Low → High</option>
+        <option value="verdict">Verdict (best first)</option>
+        <option value="name">Name (A–Z)</option>
+        <option value="type">Type (A–Z)</option>
+        <option value="element">Element (A–Z)</option>
       </select>
     </div>
   );

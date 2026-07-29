@@ -4,13 +4,31 @@ import { Character, Verdict, WeaponDto } from "../types";
 import { matchWeapon, parseQuery } from "../search";
 import { TAGS } from "../visual";
 import { ComparePanel } from "./ComparePanel";
-import { FilterState, Filters } from "./Filters";
+import { FilterState, Filters, SortKey } from "./Filters";
 import { WeaponCard } from "./WeaponCard";
 import { WeaponDetail } from "./WeaponDetail";
 
 const ORDER: Record<Verdict, number> = {
   god_roll: 0, masterwork: 1, good: 2, no_data: 3, dismantle: 4,
 };
+
+function compareWeapons(a: WeaponDto, b: WeaponDto, sort: SortKey): number {
+  switch (sort) {
+    case "power_asc":
+      return a.power - b.power || a.name.localeCompare(b.name);
+    case "verdict":
+      return ORDER[a.verdict] - ORDER[b.verdict] || a.name.localeCompare(b.name);
+    case "name":
+      return a.name.localeCompare(b.name);
+    case "type":
+      return a.weaponType.localeCompare(b.weaponType) || b.power - a.power;
+    case "element":
+      return a.element.localeCompare(b.element) || b.power - a.power;
+    case "power_desc":
+    default:
+      return b.power - a.power || a.name.localeCompare(b.name);
+  }
+}
 
 function sinceText(cachedAt?: number): string {
   if (!cachedAt) return "";
@@ -32,7 +50,7 @@ export function WeaponGrid() {
   const [tags, setTags] = useState<Record<string, string>>({});
   const [tagFilter, setTagFilter] = useState("all");
   const [filters, setFilters] = useState<FilterState>({
-    verdict: "all", weaponType: "all", search: "",
+    verdict: "all", weaponType: "all", element: "all", search: "", sort: "power_desc",
   });
 
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -82,6 +100,17 @@ export function WeaponGrid() {
     [weapons],
   );
 
+  // Only damage types actually present, in Destiny's canonical order rather
+  // than alphabetical — a subclass-shaped list reads faster than A-Z.
+  const elements = useMemo(() => {
+    const order = ["Kinetic", "Arc", "Solar", "Void", "Stasis", "Strand"];
+    const present = new Set(weapons.map((w) => w.element));
+    return [
+      ...order.filter((e) => present.has(e)),
+      ...Array.from(present).filter((e) => !order.includes(e)).sort(),
+    ];
+  }, [weapons]);
+
   const tabs = useMemo(
     () => ["All", ...characters.map((c) => c.className), "Vault"],
     [characters],
@@ -95,8 +124,9 @@ export function WeaponGrid() {
       .filter((w) => tagFilter === "all" || (tags[w.instanceId] || "") === tagFilter)
       .filter((w) => filters.verdict === "all" || w.verdict === filters.verdict)
       .filter((w) => filters.weaponType === "all" || w.weaponType === filters.weaponType)
+      .filter((w) => filters.element === "all" || w.element === filters.element)
       .filter((w) => matchWeapon(w, tags[w.instanceId] || "", terms))
-      .sort((a, b) => ORDER[a.verdict] - ORDER[b.verdict] || a.name.localeCompare(b.name));
+      .sort((a, b) => compareWeapons(a, b, filters.sort));
   }, [weapons, filters, location, tags, tagFilter, terms]);
 
   if (loading) return <div>Analyzing your inventory… (first run downloads the manifest)</div>;
@@ -151,7 +181,7 @@ export function WeaponGrid() {
           {TAGS.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
       </div>
-      <Filters state={filters} types={types} onChange={setFilters} />
+      <Filters state={filters} types={types} elements={elements} onChange={setFilters} />
       {selected && (
         <WeaponDetail
           w={selected}

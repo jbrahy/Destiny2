@@ -79,6 +79,19 @@ export function WeaponDetail({
         <TagSelect value={tag} onChange={onTag} />
       </div>
 
+      {/* /api/characters returns an empty list (HTTP 200) whenever the cached
+          profile has expired — 300s TTL. Hiding the row on that made the move
+          controls silently vanish and look like a missing feature, so say why. */}
+      {characters.length === 0 && (
+        <div style={{
+          background: "var(--panel2)", borderRadius: 6, padding: "8px 10px",
+          marginBottom: 10, fontSize: 13, color: "var(--muted)",
+        }}>
+          <strong>Move to:</strong> character list unavailable — your cached inventory
+          has expired. Hit <em>Refresh</em> on the Weapons tab, then reopen this weapon.
+        </div>
+      )}
+
       {characters.length > 0 && (
         <div style={{ background: "var(--panel2)", borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>
           <strong style={{ fontSize: 13 }}>Move to: </strong>
