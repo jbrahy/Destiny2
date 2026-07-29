@@ -31,6 +31,11 @@ class Manifest:
     def tier_type(self, item_hash: int) -> int:
         return self._def(item_hash).get("inventory", {}).get("tierType", 0)
 
+    def bucket_hash(self, item_hash: int) -> int:
+        """The item's home inventory bucket. Read from the definition, not the
+        profile: a vault-held item reports the vault bucket in the profile."""
+        return self._def(item_hash).get("inventory", {}).get("bucketTypeHash", 0)
+
     def is_weapon(self, item_hash: int) -> bool:
         return self._def(item_hash).get("itemType") == 3
 

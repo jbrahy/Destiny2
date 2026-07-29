@@ -28,6 +28,8 @@ class OwnedWeapon:
     stats: dict[str, int] = field(default_factory=dict)
     icon: str = ""
     equipped: bool = False
+    is_exotic: bool = False
+    bucket_hash: int = 0
 
 
 @dataclass

@@ -107,6 +107,8 @@ def assemble_weapons(profile: dict, manifest: Manifest) -> list[OwnedWeapon]:
                 stats=stats,
                 icon=manifest.icon(item_hash),
                 equipped=equipped,
+                is_exotic=manifest.tier_type(item_hash) == 6,
+                bucket_hash=manifest.bucket_hash(item_hash),
             )
         )
     return weapons

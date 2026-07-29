@@ -50,3 +50,38 @@ def test_extract_response_returns_payload_on_success():
 def test_extract_response_raises_on_error_code():
     with pytest.raises(BungieApiError, match="bad token"):
         extract_response({"ErrorCode": 99, "Message": "bad token"})
+
+
+def test_manifest_bucket_hash_reads_inventory_bucket_type_hash():
+    m = Manifest(items={555: {"inventory": {"bucketTypeHash": 1498876634}}})
+    assert m.bucket_hash(555) == 1498876634
+
+
+def test_manifest_bucket_hash_defaults_to_zero_when_missing():
+    assert Manifest(items={}).bucket_hash(999) == 0
+
+
+def test_assemble_weapons_sets_is_exotic_and_bucket_hash():
+    """tierType 6 is Exotic; tierType 5 is Legendary (already used for is_random_roll)."""
+    manifest = Manifest(items={
+        777: {
+            "displayProperties": {"name": "Gjallarhorn", "icon": "/gjally.jpg"},
+            "itemType": 3,
+            "itemTypeDisplayName": "Rocket Launcher",
+            "inventory": {"tierType": 6, "bucketTypeHash": 953998645},
+            "equippingBlock": {"ammoType": 3},
+        },
+    })
+    profile = {
+        "characters": {"data": {}},
+        "characterEquipment": {"data": {}},
+        "characterInventories": {"data": {}},
+        "profileInventory": {"data": {"items": [
+            {"itemInstanceId": "inst-777", "itemHash": 777, "state": 0},
+        ]}},
+        "itemComponents": {},
+    }
+    weapons = assemble_weapons(profile, manifest)
+    assert len(weapons) == 1
+    assert weapons[0].is_exotic is True
+    assert weapons[0].bucket_hash == 953998645
