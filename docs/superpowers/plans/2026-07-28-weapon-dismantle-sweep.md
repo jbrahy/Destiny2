@@ -1539,7 +1539,7 @@ export type DismantleCandidate = {
   verdict: string;
   source: "tagged" | "suggested";
   reason: string;
-  blocked: "" | "exotic" | "high_verdict" | "equipped";
+  blocked: "" | "locked" | "exotic" | "high_verdict" | "equipped";
   overridable: boolean;
 };
 
@@ -1645,6 +1645,7 @@ import {
 import { Character } from "../types";
 
 const BLOCK_LABEL: Record<string, string> = {
+  locked: "Locked in-game",
   exotic: "Exotic",
   high_verdict: "High-value roll",
   equipped: "Equipped — cannot be swept",
