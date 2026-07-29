@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -1181,6 +1182,16 @@ _FRONTEND_DIST = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
 )
 if os.path.isdir(_FRONTEND_DIST):
+    # routes.tsx declares "/app/*", a wildcard the SSG build cannot prerender, so
+    # no /app/index.html exists on disk. StaticFiles has no SPA fallback, so without
+    # these routes /app 404s — and /app is the landing page's primary CTA and where
+    # login lands. Declared before the mount so they take priority over it.
+    @app.get("/app")
+    @app.get("/app/{spa_path:path}")
+    async def spa_shell(spa_path: str = "") -> FileResponse:
+        """Serve the SPA shell so the client router can handle /app routes."""
+        return FileResponse(os.path.join(_FRONTEND_DIST, "index.html"))
+
     app.mount("/", StaticFiles(directory=_FRONTEND_DIST, html=True), name="frontend")
 
 
