@@ -200,6 +200,23 @@ async def equip_item(
     _raise_for_bungie(resp)
 
 
+async def set_item_lock_state(
+    membership_type: int, instance_id: str, character_id: str, state: bool,
+    access_token: str, settings: Settings, client: httpx.AsyncClient,
+) -> None:
+    """Lock (state=True) or unlock (state=False) an item instance. Unlocking is
+    the prerequisite for the user dismantling it in-game."""
+    resp = await client.post(
+        f"{_BASE}/Destiny2/Actions/Items/SetItemLockState/",
+        json={
+            "state": state, "itemId": instance_id,
+            "characterId": character_id, "membershipType": membership_type,
+        },
+        headers=_headers(settings, access_token),
+    )
+    _raise_for_bungie(resp)
+
+
 async def pull_from_postmaster(
     membership_type: int, item_hash: int, instance_id: str, character_id: str,
     stack_size: int, access_token: str, settings: Settings, client: httpx.AsyncClient,

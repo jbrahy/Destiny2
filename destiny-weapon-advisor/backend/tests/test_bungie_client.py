@@ -3,7 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from app.bungie_client import BungieApiError, assemble_weapons, extract_response
+from app.bungie_client import (
+    BungieApiError,
+    assemble_weapons,
+    extract_response,
+    set_item_lock_state,
+)
+from app.config import get_settings
 from app.manifest import Manifest
 
 PROFILE = json.loads((Path(__file__).parent / "fixtures" / "profile_sample.json").read_text())
@@ -85,3 +91,48 @@ def test_assemble_weapons_sets_is_exotic_and_bucket_hash():
     assert len(weapons) == 1
     assert weapons[0].is_exotic is True
     assert weapons[0].bucket_hash == 953998645
+
+
+@pytest.mark.asyncio
+async def test_set_item_lock_state_posts_expected_payload():
+    calls = []
+
+    class FakeResponse:
+        def json(self):
+            return {"ErrorCode": 1, "Response": 0}
+
+    class FakeClient:
+        async def post(self, url, json=None, headers=None):
+            calls.append((url, json))
+            return FakeResponse()
+
+    settings = get_settings()
+    await set_item_lock_state(
+        3, "inst-1", "char-1", False, "token", settings, FakeClient()
+    )
+
+    url, payload = calls[0]
+    assert url.endswith("/Destiny2/Actions/Items/SetItemLockState/")
+    assert payload == {
+        "state": False,
+        "itemId": "inst-1",
+        "characterId": "char-1",
+        "membershipType": 3,
+    }
+
+
+@pytest.mark.asyncio
+async def test_set_item_lock_state_raises_on_bungie_error():
+    class FakeResponse:
+        def json(self):
+            return {"ErrorCode": 1618, "ErrorStatus": "DestinyItemNotFound",
+                    "Message": "Item not found."}
+
+    class FakeClient:
+        async def post(self, url, json=None, headers=None):
+            return FakeResponse()
+
+    with pytest.raises(BungieApiError):
+        await set_item_lock_state(
+            3, "inst-1", "char-1", False, "token", get_settings(), FakeClient()
+        )
