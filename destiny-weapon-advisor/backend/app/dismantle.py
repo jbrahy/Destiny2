@@ -21,6 +21,7 @@ BUCKET_CAPACITY = 9
 BLOCK_EXOTIC = "exotic"
 BLOCK_VERDICT = "high_verdict"
 BLOCK_EQUIPPED = "equipped"
+BLOCK_LOCKED = "locked"
 
 # Verdicts good enough that staging one requires an explicit override.
 _BLOCKED_VERDICTS = {Verdict.GOD_ROLL, Verdict.MASTERWORK}
@@ -39,7 +40,7 @@ class Candidate:
     verdict: str
     source: str        # "tagged" | "suggested"
     reason: str
-    blocked: str       # "" | BLOCK_EXOTIC | BLOCK_VERDICT | BLOCK_EQUIPPED
+    blocked: str       # "" | BLOCK_EQUIPPED | BLOCK_LOCKED | BLOCK_EXOTIC | BLOCK_VERDICT
     overridable: bool
 
 
@@ -47,7 +48,8 @@ def classify(scored: list[dict], tags: dict[str, str]) -> list[Candidate]:
     """Build the sweep candidate list from scored weapons and the user's tags.
 
     A weapon is a candidate if the user tagged it 'junk', or if the scoring
-    engine returned Verdict.DISMANTLE. An explicit 'keep' tag always wins.
+    engine returned Verdict.DISMANTLE. An explicit 'keep', 'favorite', or
+    'infuse' tag always wins and excludes the weapon entirely.
     Blocked candidates are still returned — the UI shows them greyed with a
     reason, so a block is visible rather than a silent omission.
     """
@@ -55,7 +57,7 @@ def classify(scored: list[dict], tags: dict[str, str]) -> list[Candidate]:
     for row in scored:
         weapon = row["weapon"]
         tag = tags.get(weapon.instance_id, "")
-        if tag == "keep":
+        if tag in ("keep", "favorite", "infuse"):
             continue
 
         if tag == "junk":
@@ -72,6 +74,8 @@ def classify(scored: list[dict], tags: dict[str, str]) -> list[Candidate]:
 
         if weapon.equipped:
             blocked, overridable = BLOCK_EQUIPPED, False
+        elif weapon.is_locked:
+            blocked, overridable = BLOCK_LOCKED, True
         elif weapon.is_exotic:
             blocked, overridable = BLOCK_EXOTIC, True
         elif row["verdict"] in _BLOCKED_VERDICTS:

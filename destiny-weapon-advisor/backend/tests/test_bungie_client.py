@@ -37,6 +37,32 @@ def test_masterwork_flag_from_state_bitmask():
     assert weapons["i2"].is_masterworked is False
 
 
+def test_locked_flag_from_state_bitmask():
+    """state bit 1 is locked; bit 2 (4) is masterwork — verify they're read
+    independently, including when both are set on the same item."""
+    manifest = Manifest(items={
+        100: {"displayProperties": {"name": "Fatebringer"}, "itemType": 3,
+              "itemTypeDisplayName": "Hand Cannon", "inventory": {"tierType": 5}},
+    })
+    profile = {
+        "characters": {"data": {}},
+        "characterEquipment": {"data": {}},
+        "characterInventories": {"data": {}},
+        "profileInventory": {"data": {"items": [
+            {"itemInstanceId": "locked-only", "itemHash": 100, "state": 1},
+            {"itemInstanceId": "unlocked", "itemHash": 100, "state": 0},
+            {"itemInstanceId": "locked-and-masterworked", "itemHash": 100, "state": 5},
+        ]}},
+        "itemComponents": {},
+    }
+    weapons = {w.instance_id: w for w in assemble_weapons(profile, manifest)}
+    assert weapons["locked-only"].is_locked is True
+    assert weapons["locked-only"].is_masterworked is False
+    assert weapons["unlocked"].is_locked is False
+    assert weapons["locked-and-masterworked"].is_locked is True
+    assert weapons["locked-and-masterworked"].is_masterworked is True
+
+
 def test_random_roll_true_for_legendary_false_for_exotic():
     weapons = {w.instance_id: w for w in assemble_weapons(PROFILE, MANIFEST)}
     assert weapons["i1"].is_random_roll is True

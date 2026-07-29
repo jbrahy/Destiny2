@@ -30,6 +30,7 @@ class OwnedWeapon:
     equipped: bool = False
     is_exotic: bool = False
     bucket_hash: int = 0
+    is_locked: bool = False
 
 
 @dataclass

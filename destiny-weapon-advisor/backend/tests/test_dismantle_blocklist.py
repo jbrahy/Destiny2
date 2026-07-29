@@ -1,15 +1,17 @@
 """Blocklist enforcement — the guard against staging something irreplaceable.
 
 Rules under test:
+  equipped        -> blocked, override NEVER permitted (hard block, first)
+  locked          -> blocked, override permitted
   exotic          -> blocked, override permitted
   god_roll        -> blocked, override permitted
   masterwork      -> blocked, override permitted
-  equipped        -> blocked, override NEVER permitted
   good / no_data  -> allowed only if the user tagged them junk
   dismantle       -> suggested (unchecked), allowed when requested
+  keep/favorite/infuse tags -> excluded entirely, never a candidate
 """
 from app.dismantle import (
-    BLOCK_EQUIPPED, BLOCK_EXOTIC, BLOCK_VERDICT,
+    BLOCK_EQUIPPED, BLOCK_EXOTIC, BLOCK_LOCKED, BLOCK_VERDICT,
     Candidate, classify, enforce_blocklist,
 )
 from app.models import OwnedWeapon, Verdict
@@ -20,7 +22,7 @@ def _weapon(instance_id, **kw):
         item_hash=1, name="Test Gun", weapon_type="Hand Cannon", element="Arc",
         is_masterworked=False, is_random_roll=True, perks=frozenset(),
         location="Vault", power=1800, icon="/i.jpg", equipped=False,
-        is_exotic=False, bucket_hash=1498876634,
+        is_exotic=False, bucket_hash=1498876634, is_locked=False,
     )
     defaults.update(kw)
     return OwnedWeapon(instance_id=instance_id, **defaults)
@@ -60,10 +62,27 @@ def test_keep_tag_excludes_a_dismantle_verdict_weapon():
     assert classify(scored, {"a": "keep"}) == []
 
 
+def test_favorite_tag_excludes_a_dismantle_verdict_weapon():
+    scored = [_scored(_weapon("a"), Verdict.DISMANTLE)]
+    assert classify(scored, {"a": "favorite"}) == []
+
+
+def test_infuse_tag_excludes_a_dismantle_verdict_weapon():
+    scored = [_scored(_weapon("a"), Verdict.DISMANTLE)]
+    assert classify(scored, {"a": "infuse"}) == []
+
+
 def test_exotic_is_blocked_but_overridable():
     scored = [_scored(_weapon("a", is_exotic=True), Verdict.DISMANTLE)]
     out = classify(scored, {"a": "junk"})
     assert out[0].blocked == BLOCK_EXOTIC
+    assert out[0].overridable is True
+
+
+def test_locked_is_blocked_but_overridable():
+    scored = [_scored(_weapon("a", is_locked=True), Verdict.DISMANTLE)]
+    out = classify(scored, {"a": "junk"})
+    assert out[0].blocked == BLOCK_LOCKED
     assert out[0].overridable is True
 
 
@@ -82,6 +101,38 @@ def test_equipped_is_blocked_and_not_overridable():
     out = classify(scored, {"a": "junk"})
     assert out[0].blocked == BLOCK_EQUIPPED
     assert out[0].overridable is False
+
+
+def test_equipped_beats_exotic_in_block_precedence():
+    """Rule precedence is load-bearing: reordering the if/elif chain would
+    silently make an equipped exotic overridable. Pin equipped as first."""
+    scored = [_scored(_weapon("a", equipped=True, is_exotic=True), Verdict.DISMANTLE)]
+    out = classify(scored, {"a": "junk"})
+    assert out[0].blocked == BLOCK_EQUIPPED
+    assert out[0].overridable is False
+
+
+def test_equipped_beats_high_verdict_in_block_precedence():
+    scored = [_scored(_weapon("a", equipped=True), Verdict.GOD_ROLL)]
+    out = classify(scored, {"a": "junk"})
+    assert out[0].blocked == BLOCK_EQUIPPED
+    assert out[0].overridable is False
+
+
+def test_equipped_beats_locked_in_block_precedence():
+    scored = [_scored(_weapon("a", equipped=True, is_locked=True), Verdict.DISMANTLE)]
+    out = classify(scored, {"a": "junk"})
+    assert out[0].blocked == BLOCK_EQUIPPED
+    assert out[0].overridable is False
+
+
+def test_locked_beats_exotic_in_block_precedence():
+    """A locked exotic reports BLOCK_LOCKED, pinning the full ordering:
+    equipped -> locked -> exotic -> high_verdict."""
+    scored = [_scored(_weapon("a", is_locked=True, is_exotic=True), Verdict.DISMANTLE)]
+    out = classify(scored, {"a": "junk"})
+    assert out[0].blocked == BLOCK_LOCKED
+    assert out[0].overridable is True
 
 
 def test_dupe_demoted_suggestion_reports_the_duplicate_reason():
@@ -115,6 +166,18 @@ def test_enforce_blocklist_permits_a_blocked_item_with_override():
 def test_override_cannot_unblock_an_equipped_weapon():
     """The hard block. An override must never reach the equipped rule."""
     cands = classify([_scored(_weapon("a", equipped=True), Verdict.DISMANTLE)], {"a": "junk"})
+    allowed, rejected = enforce_blocklist(cands, ["a"], ["a"])
+    assert allowed == []
+    assert rejected == [{"instanceId": "a", "reason": BLOCK_EQUIPPED}]
+
+
+def test_override_cannot_unblock_an_equipped_exotic_weapon():
+    """Even though exotic alone is overridable, equipped takes precedence and
+    stays a hard block no matter what else is true about the weapon."""
+    cands = classify(
+        [_scored(_weapon("a", equipped=True, is_exotic=True), Verdict.DISMANTLE)],
+        {"a": "junk"},
+    )
     allowed, rejected = enforce_blocklist(cands, ["a"], ["a"])
     assert allowed == []
     assert rejected == [{"instanceId": "a", "reason": BLOCK_EQUIPPED}]
