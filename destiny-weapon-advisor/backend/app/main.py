@@ -1192,6 +1192,20 @@ if os.path.isdir(_FRONTEND_DIST):
         """Serve the SPA shell so the client router can handle /app routes."""
         return FileResponse(os.path.join(_FRONTEND_DIST, "index.html"))
 
+    # The SSG build emits flat prerendered pages (dist/weapons/<slug>.html).
+    # StaticFiles will not append ".html" the way the nginx design's
+    # `try_files $uri $uri.html` did, so these 404 — while sitemap.xml
+    # advertises them to search engines.
+    @app.get("/weapons/{slug}")
+    async def prerendered_weapon(slug: str) -> FileResponse:
+        """Serve a flat prerendered weapon page by slug."""
+        weapons_dir = os.path.join(_FRONTEND_DIST, "weapons")
+        candidate = os.path.normpath(os.path.join(weapons_dir, f"{slug}.html"))
+        # Guard against traversal: the resolved path must stay inside weapons/.
+        if not candidate.startswith(weapons_dir + os.sep) or not os.path.isfile(candidate):
+            raise HTTPException(status_code=404, detail="Not found")
+        return FileResponse(candidate)
+
     app.mount("/", StaticFiles(directory=_FRONTEND_DIST, html=True), name="frontend")
 
 
