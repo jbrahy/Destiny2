@@ -1054,6 +1054,11 @@ def _candidate_to_dict(c) -> dict:
         "name": c.name,
         "icon": c.icon,
         "power": c.power,
+        # Serialised as a string so it keys directly into plan.perBucket, whose
+        # keys are stringified bucket hashes. Without this the UI cannot tell
+        # which bucket a candidate consumes and can only sum free space across
+        # all three, overstating what fits for a bucket-concentrated selection.
+        "bucketHash": str(c.bucket_hash),
         "verdict": c.verdict,
         "source": c.source,
         "reason": c.reason,
