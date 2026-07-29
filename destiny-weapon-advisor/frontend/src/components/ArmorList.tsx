@@ -9,6 +9,16 @@ import { TagChip, TagSelect } from "./TagSelect";
 
 const SLOTS = ["Helmet", "Gauntlets", "Chest Armor", "Leg Armor", "Class Item"];
 
+type ArmorSortKey = "slot" | "total_desc" | "power_desc" | "rating" | "name";
+
+const ARMOR_SORTS: { value: ArmorSortKey; label: string }[] = [
+  { value: "slot", label: "Slot (then total)" },
+  { value: "total_desc", label: "Total stats: High \u2192 Low" },
+  { value: "power_desc", label: "Power: High \u2192 Low" },
+  { value: "rating", label: "Rating (best first)" },
+  { value: "name", label: "Name (A\u2013Z)" },
+];
+
 function total(a: ArmorPiece): number {
   return Object.values(a.stats).reduce((x, y) => x + y, 0);
 }
@@ -28,6 +38,24 @@ function rate(a: ArmorPiece, maxInSlot: number): Rating {
   if (pct >= 0.8) return { label: "Good", color: "#1565c0", rank: 2 };
   if (pct >= 0.65) return { label: "OK", color: "#f9a825", rank: 3 };
   return { label: "Dismantle?", color: "#c62828", rank: 4 };
+}
+
+// Ties break on total stats so equal-rated pieces keep a useful order.
+function compareArmor(
+  x: { a: ArmorPiece; r: Rating }, y: { a: ArmorPiece; r: Rating }, sort: ArmorSortKey,
+): number {
+  switch (sort) {
+    case "total_desc":
+      return total(y.a) - total(x.a) || y.a.power - x.a.power;
+    case "power_desc":
+      return y.a.power - x.a.power || total(y.a) - total(x.a);
+    case "rating":
+      return x.r.rank - y.r.rank || total(y.a) - total(x.a);
+    case "name":
+      return x.a.name.localeCompare(y.a.name);
+    default:
+      return SLOTS.indexOf(x.a.slot) - SLOTS.indexOf(y.a.slot) || total(y.a) - total(x.a);
+  }
 }
 
 function ArmorDetail({ a, rating }: { a: ArmorPiece; rating: Rating }) {
@@ -63,6 +91,7 @@ export function ArmorList() {
   const [location, setLocation] = useState("All");
   const [slot, setSlot] = useState("all");
   const [ratingFilter, setRatingFilter] = useState("all");
+  const [sort, setSort] = useState<ArmorSortKey>("slot");
   const [search, setSearch] = useState("");
   const [tags, setTags] = useState<Record<string, string>>({});
   const [tagFilter, setTagFilter] = useState("all");
@@ -138,9 +167,8 @@ export function ArmorList() {
         .filter(({ r }) => ratingFilter === "all" || r.label === ratingFilter)
         .filter(({ a }) => tagFilter === "all" || (tags[a.instanceId] || "") === tagFilter)
         .filter(({ a, r }) => matchArmor(a, tags[a.instanceId] || "", r.label, terms))
-        .sort((x, y) =>
-          SLOTS.indexOf(x.a.slot) - SLOTS.indexOf(y.a.slot) || total(y.a) - total(x.a)),
-    [armor, maxBySlot, location, slot, ratingFilter, tags, tagFilter, terms],
+        .sort((x, y) => compareArmor(x, y, sort)),
+    [armor, maxBySlot, location, slot, ratingFilter, tags, tagFilter, terms, sort],
   );
 
   if (loading) return <div>Loading armor…</div>;
@@ -184,6 +212,15 @@ export function ArmorList() {
           <option value="Good">Good</option>
           <option value="OK">OK</option>
           <option value="Dismantle?">Dismantle?</option>
+        </select>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as ArmorSortKey)}
+          title="Sort armor"
+        >
+          {ARMOR_SORTS.map((s) => (
+            <option key={s.value} value={s.value}>{s.label}</option>
+          ))}
         </select>
         <select value={slot} onChange={(e) => setSlot(e.target.value)}>
           <option value="all">All slots</option>

@@ -5,7 +5,7 @@ async def create_pool(settings):
     return await aiomysql.create_pool(
         host=settings.db_host, port=settings.db_port, user=settings.db_user,
         password=settings.db_password, db=settings.db_name,
-        autocommit=False, minsize=1, maxsize=10, charset="utf8mb4",
+        autocommit=True, minsize=1, maxsize=10, charset="utf8mb4",
     )
 
 
