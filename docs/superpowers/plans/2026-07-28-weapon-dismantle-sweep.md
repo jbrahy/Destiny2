@@ -1277,6 +1277,10 @@ async def dismantle_sweep(
 
     by_id = {c.instance_id: c for c in candidates}
     locked_now = _locked_instance_ids(profile)
+    # Never re-record lock state for an instance already staged. Staging unlocks
+    # the item, so a second pass would read it as unlocked and overwrite the true
+    # original with False — destroying exactly what undo needs to restore.
+    already_staged = await user_tables.get_staged_sweep(pool, uid)
     throttle = request.app.state.throttle
     staged: list[str] = []
     failed: list[dict] = []
@@ -1304,7 +1308,8 @@ async def dismantle_sweep(
                 failed.append({"instanceId": instance_id, "error": str(exc)})
                 continue
             staged.append(instance_id)
-            staged_rows.append((instance_id, instance_id in locked_now))
+            if instance_id not in already_staged:
+                staged_rows.append((instance_id, instance_id in locked_now))
         fresh = await throttle.run(lambda: get_profile(mtype, mid, access, settings, client))
 
     await user_tables.stage_sweep_items(pool, uid, staged_rows)
