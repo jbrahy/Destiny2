@@ -16,6 +16,8 @@
 - **Ordering:** for each item, transfer strictly precedes unlock. Undo reverses it: re-lock, then transfer to vault.
 - **No test touches live inventory.** All Bungie calls in tests go through fakes.
 - Verdicts are the `Verdict` enum in `app/models.py` (`god_roll`, `masterwork`, `good`, `no_data`, `dismantle`). The S/A/B/C/D scale (`TIER_SCORE` in `app/perk_ratings.py`) rates *perks*, not weapons. Do not conflate them.
+- **Blocklist precedence (amended after the Task 3 review, and load-bearing):** `equipped` → `BLOCK_EQUIPPED`, never overridable; then `locked` → `BLOCK_LOCKED`; then `exotic` → `BLOCK_EXOTIC`; then `god_roll`/`masterwork` → `BLOCK_VERDICT`; all three of those overridable. `OwnedWeapon.is_locked` comes from the item state bitmask (`_LOCKED_STATE = 1` in `app/bungie_client.py`).
+- **Tag exclusions (amended after the Task 3 review):** `keep`, `favorite`, and `infuse` all exclude a weapon from a sweep entirely. Only `junk` and untagged weapons are eligible.
 - Backend tests run from `destiny-weapon-advisor/backend/` and need a live MySQL (`conftest.py` creates and drops the `advisor_test` database).
 - Follow existing style: no docstring-free public functions, keep `main.py` handlers thin, match the `snake_case` backend / `camelCase` JSON boundary already used by `weapon_to_dict`.
 
@@ -1221,10 +1223,15 @@ Expected: FAIL — 404.
 
 Add to `backend/app/main.py`, after `dismantle_preview`:
 
+Import the lock bitmask rather than redefining it — `app/bungie_client.py` already
+owns `_LOCKED_STATE` (added in the Task 3 fix round, alongside `_MASTERWORK_STATE`).
+Add it to the existing `from app.bungie_client import (...)` block:
+
 ```python
-_LOCKED_STATE = 1
+from app.bungie_client import _LOCKED_STATE
+```
 
-
+```python
 def _locked_instance_ids(profile: dict) -> set[str]:
     """Instance ids currently locked, read from the item state bitmask."""
     locked = set()

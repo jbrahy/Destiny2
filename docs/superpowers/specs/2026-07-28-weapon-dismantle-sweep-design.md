@@ -44,6 +44,12 @@ Two sources, visually distinguished in the UI:
 
 The app never selects a weapon for destruction without an explicit user action.
 
+**`keep`, `favorite`, and `infuse` all exclude a weapon entirely** — none of the
+three can appear in a sweep at any strength of suggestion. All three express
+keep-intent: `favorite` is at least as strong a signal as `keep`, and `infuse`
+means the user is banking the weapon as infusion fuel. Only `junk` and untagged
+weapons are eligible.
+
 ### Verdict taxonomy
 
 Weapon verdicts (`app/models.py`) are an enum, *not* the S/A/B/C/D scale — that
@@ -71,13 +77,24 @@ Enforced in the backend. The client is never trusted with these rules.
 
 | Rule | Behavior |
 |---|---|
+| Locked in-game (item `state & 1`) | Blocked; explicit per-instance override required |
 | Exotic (`manifest.tier_type(item_hash) == 6`) | Blocked; explicit per-instance override required |
 | Verdict `god_roll` or `masterwork` | Blocked; explicit per-instance override required |
 | Currently equipped on any character | Hard block; no override (the game rejects it regardless) |
 
-`OwnedWeapon` carries no exotic flag today, so the blocklist needs one added:
-`is_exotic` in `assemble_weapons`, mirroring how `ArmorPiece` already derives it
-from `manifest.tier_type(item_hash) == 6`.
+Rules are evaluated in that precedence order, equipped first. **The ordering is
+load-bearing** — an equipped exotic must resolve to the equipped hard block, not
+the overridable exotic block — so it carries its own regression tests covering
+weapons that trip two rules at once.
+
+The in-game lock is Destiny's canonical "never delete this" marker, and this
+feature's entire job is to unlock things, so a locked weapon is never staged
+without the user overriding it explicitly.
+
+`OwnedWeapon` carries neither an exotic nor a lock flag today, so the blocklist
+needs both added in `assemble_weapons`: `is_exotic` from
+`manifest.tier_type(item_hash) == 6` (mirroring `ArmorPiece`), and `is_locked`
+from the item state bitmask, alongside the existing `_MASTERWORK_STATE` read.
 
 Overrides are per-instance and echo back into the confirmation list, so an
 overridden exotic is still visibly an exotic at the moment of commit.
@@ -161,7 +178,7 @@ TDD, matching the existing one-file-per-concern layout under `backend/tests/`.
 
 | File | Covers |
 |---|---|
-| `test_dismantle_blocklist.py` | Exotics and `god_roll`/`masterwork` verdicts blocked; override permits; equipped never permitted even with override |
+| `test_dismantle_blocklist.py` | Locked, exotic, and `god_roll`/`masterwork` weapons blocked; override permits; equipped never permitted even with override; rule precedence pinned for weapons tripping two rules at once |
 | `test_dismantle_batching.py` | Capacity math against pre-occupied buckets; remainder ordering |
 | `test_dismantle_undo.py` | `was_locked` recorded on stage, restored on undo |
 | `test_endpoints_dismantle.py` | Endpoint wiring, following `test_endpoints_transfer.py` |
