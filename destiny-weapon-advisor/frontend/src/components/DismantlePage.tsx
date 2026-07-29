@@ -81,7 +81,6 @@ export function DismantlePage() {
       const res = await runDismantleSweep(
         characterId, [...selected], [...overrides],
       );
-      setStagedCount(res.staged.length);
       if (res.deferred.length) {
         setInfo(`${res.staged.length} staged, ${res.deferred.length} deferred to the next batch.`);
       }
@@ -96,6 +95,9 @@ export function DismantlePage() {
       const refreshed = await fetchDismantlePreview(characterId);
       setCandidates(refreshed.candidates);
       setPlan(refreshed.plan);
+      // The staged banner counts everything staged on the server, not just
+      // this batch — an earlier batch may still be waiting to be dismantled.
+      setStagedCount(Object.keys(refreshed.staged).length);
       setSelected(new Set());
     } catch (e) {
       setError(String(e));
@@ -106,12 +108,20 @@ export function DismantlePage() {
 
   async function undo() {
     setBusy(true);
+    setError("");
+    setInfo("");
     try {
-      await undoDismantleSweep(characterId);
-      setStagedCount(0);
+      const res = await undoDismantleSweep(characterId);
+      if (res.failed.length) {
+        setError(`${res.failed.length} item(s) failed to restore: ${res.failed.map((f) => f.error).join("; ")}`);
+      }
       const refreshed = await fetchDismantlePreview(characterId);
       setCandidates(refreshed.candidates);
       setPlan(refreshed.plan);
+      // Whatever failed is still staged, still unlocked, and still needs the
+      // banner's Undo button to retry — so the count comes from the server's
+      // refreshed staged map, never from assuming the undo emptied it.
+      setStagedCount(Object.keys(refreshed.staged).length);
     } catch (e) {
       setError(String(e));
     } finally {
