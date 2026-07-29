@@ -553,6 +553,81 @@ async def dismantle_sweep(
             "rejected": rejected, "failed": failed}
 
 
+def _instance_item_hashes(profile: dict) -> dict[str, int]:
+    """Map instance id -> item hash across every inventory bucket."""
+    out: dict[str, int] = {}
+    buckets = [profile.get("profileInventory", {}).get("data", {})]
+    buckets += list(profile.get("characterInventories", {}).get("data", {}).values())
+    buckets += list(profile.get("characterEquipment", {}).get("data", {}).values())
+    for entry in buckets:
+        for item in entry.get("items", []):
+            instance_id = item.get("itemInstanceId")
+            if instance_id:
+                out[instance_id] = item.get("itemHash", 0)
+    return out
+
+
+@app.post("/api/dismantle/undo")
+async def dismantle_undo(
+    request: Request,
+    body: DismantleUndoBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+    _csrf=Depends(require_csrf),
+) -> dict:
+    """Reverse a staged sweep: restore each item's prior lock state, then send
+    it back to the vault. Re-locking first mirrors the sweep's safety ordering:
+    an interrupted undo must leave a weapon locked on a character rather than
+    unlocked and sitting in the vault where it can be dismantled by accident.
+
+    An item whose unlock failed during the sweep was left transferred but
+    still locked — re-locking it here is a harmless no-op, not an error. An
+    instance missing from the profile entirely was already dismantled
+    in-game, which is the feature working as intended, so it counts as
+    restored rather than failed.
+    """
+    settings = get_settings()
+    uid = current_user["user_id"]
+    staged = await user_tables.get_staged_sweep(pool, uid)
+    if not staged:
+        return {"restored": [], "failed": []}
+
+    profile = await _load_profile_or_400(pool, uid)
+    item_hashes = _instance_item_hashes(profile)
+    throttle = request.app.state.throttle
+    restored: list[str] = []
+    failed: list[dict] = []
+
+    async with httpx.AsyncClient(
+        timeout=60.0, headers={"X-API-Key": settings.bungie_api_key}
+    ) as client:
+        access, mtype, mid = await valid_access_token(
+            pool, uid, settings, client, settings.token_enc_key
+        )
+        for instance_id, was_locked in staged.items():
+            item_hash = item_hashes.get(instance_id)
+            if item_hash is None:
+                # Already dismantled in-game — nothing to restore.
+                restored.append(instance_id)
+                continue
+            try:
+                if was_locked:
+                    await throttle.run(lambda iid=instance_id: set_item_lock_state(
+                        mtype, iid, body.characterId, True, access, settings, client
+                    ))
+                await _move_one(client, settings, access, mtype, profile, instance_id,
+                                item_hash, "vault", False, throttle)
+            except (BungieApiError, httpx.RequestError, httpx.HTTPStatusError) as exc:
+                failed.append({"instanceId": instance_id, "error": str(exc)})
+                continue
+            restored.append(instance_id)
+        fresh = await throttle.run(lambda: get_profile(mtype, mid, access, settings, client))
+
+    await user_tables.clear_sweep_items(pool, uid, restored)
+    await _save_profile(pool, uid, fresh, mid)
+    return {"restored": restored, "failed": failed}
+
+
 @app.get("/api/activities")
 async def get_activities(
     current_user: dict = Depends(get_current_user),

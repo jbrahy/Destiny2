@@ -449,3 +449,196 @@ async def test_sweep_rejects_an_instance_the_preview_never_offered(app_client, c
     assert resp.json()["rejected"] == [
         {"instanceId": "inst-1", "reason": "not_a_candidate"},
     ]
+
+
+async def test_undo_relocks_then_returns_items_to_the_vault(app_client, clean_db, monkeypatch):
+    calls = []
+
+    async def fake_transfer(mtype, item_hash, instance_id, character_id, to_vault,
+                            access, settings, http_client):
+        calls.append(("transfer", instance_id, to_vault))
+
+    async def fake_lock(mtype, instance_id, character_id, state, access, settings, http_client):
+        calls.append(("lock", instance_id, state))
+
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", fake_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+
+    uid = await login_user(app_client, monkeypatch)
+    profile = _profile_with("inst-1", 777)
+    profile["characterInventories"]["data"][_CHAR_ID]["items"] = [
+        {"itemInstanceId": "inst-1", "itemHash": 777, "state": 0, "bucketHash": _KINETIC},
+    ]
+    profile["profileInventory"]["data"]["items"] = []
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
+    await user_tables.stage_sweep_items(clean_db, uid, [("inst-1", True)])
+
+    resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
+                                 headers=_csrf_header(app_client))
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["restored"] == ["inst-1"]
+
+    kinds = [c[0] for c in calls]
+    assert kinds.index("lock") < kinds.index("transfer")
+    assert ("lock", "inst-1", True) in calls
+
+
+async def test_undo_clears_the_staged_rows(app_client, clean_db, monkeypatch):
+    monkeypatch.setattr("app.main.transfer_item", _noop_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", _noop_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+
+    uid = await login_user(app_client, monkeypatch)
+    profile = _profile_with("inst-1", 777)
+    profile["characterInventories"]["data"][_CHAR_ID]["items"] = [
+        {"itemInstanceId": "inst-1", "itemHash": 777, "state": 0, "bucketHash": _KINETIC},
+    ]
+    profile["profileInventory"]["data"]["items"] = []
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
+    await user_tables.stage_sweep_items(clean_db, uid, [("inst-1", True)])
+
+    resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
+                                 headers=_csrf_header(app_client))
+    assert resp.status_code == 200, resp.text
+    assert await user_tables.get_staged_sweep(clean_db, uid) == {}
+
+
+async def test_undo_with_nothing_staged_is_a_no_op(app_client, clean_db, monkeypatch):
+    uid = await login_user(app_client, monkeypatch)
+    await cache_repo.set(clean_db, uid, "profile_cache",
+                         json.dumps(_profile_with("inst-1", 777)), 3600)
+    resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
+                                 headers=_csrf_header(app_client))
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"restored": [], "failed": []}
+
+
+async def test_undo_mid_batch_failure_reports_failed_and_continues(app_client, clean_db, monkeypatch):
+    """A failure on a NON-LAST item must not abort the batch: it lands in
+    `failed`, the loop continues, and the item staged after it still gets
+    restored."""
+    calls = []
+
+    async def fake_transfer(mtype, item_hash, instance_id, character_id, to_vault,
+                            access, settings, http_client):
+        calls.append(("transfer", instance_id))
+        if instance_id == "inst-2":
+            raise BungieApiError("simulated transfer failure")
+
+    async def fake_lock(mtype, instance_id, character_id, state, access, settings, http_client):
+        calls.append(("lock", instance_id, state))
+
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", fake_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+
+    uid = await login_user(app_client, monkeypatch)
+    profile = _profile_with("inst-1", 777)
+    profile["characterInventories"]["data"][_CHAR_ID]["items"] = [
+        {"itemInstanceId": "inst-1", "itemHash": 777, "state": 0, "bucketHash": _KINETIC},
+        {"itemInstanceId": "inst-2", "itemHash": 777, "state": 0, "bucketHash": _KINETIC},
+        {"itemInstanceId": "inst-3", "itemHash": 777, "state": 0, "bucketHash": _KINETIC},
+    ]
+    profile["profileInventory"]["data"]["items"] = []
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
+    await user_tables.stage_sweep_items(
+        clean_db, uid, [("inst-1", True), ("inst-2", True), ("inst-3", True)]
+    )
+
+    resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
+                                 headers=_csrf_header(app_client))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["restored"] == ["inst-1", "inst-3"]
+    assert body["failed"] == [{"instanceId": "inst-2", "error": "simulated transfer failure"}]
+    # All three were re-locked (proving the loop continued past inst-2's
+    # transfer failure), and only the two that fully restored were cleared.
+    assert [c for c in calls if c[0] == "lock"] == [
+        ("lock", "inst-1", True), ("lock", "inst-2", True), ("lock", "inst-3", True),
+    ]
+    assert await user_tables.get_staged_sweep(clean_db, uid) == {"inst-2": True}
+
+
+async def test_undo_read_timeout_is_caught_and_reported_as_failed(app_client, clean_db, monkeypatch):
+    """FINDING carried forward from Task 7: httpx.ReadTimeout is an
+    httpx.RequestError, a sibling of HTTPStatusError, not a subclass — the
+    handler's except clause must catch it explicitly or a network blip
+    propagates uncaught and aborts the whole undo batch."""
+    calls = []
+
+    async def fake_transfer(mtype, item_hash, instance_id, character_id, to_vault,
+                            access, settings, http_client):
+        calls.append(("transfer", instance_id))
+
+    async def fake_lock(mtype, instance_id, character_id, state, access, settings, http_client):
+        calls.append(("lock", instance_id, state))
+        if instance_id == "inst-1":
+            raise httpx.ReadTimeout("simulated network timeout")
+
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", fake_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+
+    uid = await login_user(app_client, monkeypatch)
+    profile = _profile_with("inst-1", 777)
+    profile["characterInventories"]["data"][_CHAR_ID]["items"] = [
+        {"itemInstanceId": "inst-1", "itemHash": 777, "state": 0, "bucketHash": _KINETIC},
+    ]
+    profile["profileInventory"]["data"]["items"] = []
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
+    await user_tables.stage_sweep_items(clean_db, uid, [("inst-1", True)])
+
+    resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
+                                 headers=_csrf_header(app_client))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["restored"] == []
+    assert body["failed"] == [{"instanceId": "inst-1", "error": "simulated network timeout"}]
+    # The lock call was attempted (and blew up) but transfer never ran.
+    assert calls == [("lock", "inst-1", True)]
+    assert await user_tables.get_staged_sweep(clean_db, uid) == {"inst-1": True}
+
+
+async def test_undo_already_locked_item_restores_without_error(app_client, clean_db, monkeypatch):
+    """Carry-forward from Task 7's review: an item whose unlock failed during
+    the sweep was left transferred but still LOCKED. Undo re-locks it anyway
+    — a harmless no-op against Bungie — and must not treat that as an error
+    or skip the item."""
+    calls = []
+
+    async def fake_transfer(mtype, item_hash, instance_id, character_id, to_vault,
+                            access, settings, http_client):
+        calls.append(("transfer", instance_id))
+
+    async def fake_lock(mtype, instance_id, character_id, state, access, settings, http_client):
+        calls.append(("lock", instance_id, state))
+
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", fake_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+
+    uid = await login_user(app_client, monkeypatch)
+    profile = _profile_with("inst-1", 777)
+    # Already locked in the profile (state=1), matching an item left locked
+    # after a Task-7-style sweep unlock failure.
+    profile["characterInventories"]["data"][_CHAR_ID]["items"] = [
+        {"itemInstanceId": "inst-1", "itemHash": 777, "state": 1, "bucketHash": _KINETIC},
+    ]
+    profile["profileInventory"]["data"]["items"] = []
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
+    await user_tables.stage_sweep_items(clean_db, uid, [("inst-1", True)])
+
+    resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
+                                 headers=_csrf_header(app_client))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["restored"] == ["inst-1"]
+    assert body["failed"] == []
+    assert calls == [("lock", "inst-1", True), ("transfer", "inst-1")]
+    assert await user_tables.get_staged_sweep(clean_db, uid) == {}
