@@ -484,7 +484,13 @@ async def dismantle_sweep(
     """Stage a batch: move each approved weapon to the character, then unlock it.
 
     Transfer precedes unlock so an interrupted sweep leaves weapons locked on a
-    character rather than unlocked in the vault.
+    character rather than unlocked in the vault. The pre-sweep lock state for
+    each item is persisted right after its transfer succeeds but before its
+    unlock call — not batched up and flushed after the whole loop — because no
+    except clause catches a process kill or client disconnect: writing early
+    means a kill before the record leaves the item transferred-but-still-locked
+    (inert, no undo record needed), while a kill during or after unlock still
+    leaves a correct record behind.
     """
     settings = get_settings()
     uid = current_user["user_id"]
@@ -506,7 +512,6 @@ async def dismantle_sweep(
     throttle = request.app.state.throttle
     staged: list[str] = []
     failed: list[dict] = []
-    staged_rows: list[tuple[str, bool]] = []
 
     async with httpx.AsyncClient(
         timeout=60.0, headers={"X-API-Key": settings.bungie_api_key}
@@ -523,18 +528,26 @@ async def dismantle_sweep(
             try:
                 await _move_one(client, settings, access, mtype, profile, instance_id,
                                 candidate.item_hash, body.characterId, False, throttle)
+                if instance_id not in already_staged:
+                    # Written now — after transfer succeeds, before unlock — so a
+                    # network error on the unlock call below can never lose the
+                    # undo record for an item that ends up unlocked.
+                    await user_tables.stage_sweep_items(
+                        pool, uid, [(instance_id, instance_id in locked_now)]
+                    )
                 await throttle.run(lambda iid=instance_id: set_item_lock_state(
+                    # iid=instance_id binds the loop variable's *current* value at
+                    # lambda-creation time. Without it every deferred closure would
+                    # share the loop's final instance_id by the time throttle.run
+                    # actually invokes it, unlocking the wrong item.
                     mtype, iid, body.characterId, False, access, settings, client
                 ))
-            except (BungieApiError, httpx.HTTPStatusError) as exc:
+            except (BungieApiError, httpx.RequestError, httpx.HTTPStatusError) as exc:
                 failed.append({"instanceId": instance_id, "error": str(exc)})
                 continue
             staged.append(instance_id)
-            if instance_id not in already_staged:
-                staged_rows.append((instance_id, instance_id in locked_now))
         fresh = await throttle.run(lambda: get_profile(mtype, mid, access, settings, client))
 
-    await user_tables.stage_sweep_items(pool, uid, staged_rows)
     await _save_profile(pool, uid, fresh, mid)
     return {"staged": staged, "deferred": plan.deferred,
             "rejected": rejected, "failed": failed}

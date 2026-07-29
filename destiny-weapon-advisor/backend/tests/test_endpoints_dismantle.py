@@ -2,8 +2,10 @@
 touches a live inventory."""
 import json
 
+import httpx
 import pytest
 
+from app.bungie_client import BungieApiError
 from app.repositories import cache as cache_repo, user_tables
 from tests.conftest import login_user
 
@@ -193,8 +195,12 @@ def _csrf_header(client) -> dict:
 
 
 async def test_sweep_transfers_then_unlocks_in_that_order(app_client, clean_db, monkeypatch):
-    """The ordering guarantee: an interrupted sweep must never leave an
-    unlocked weapon sitting in the vault."""
+    """The ordering guarantee, checked per item across a two-item batch: an
+    interrupted sweep must never leave an unlocked weapon sitting in the
+    vault. A single-item batch can't distinguish this from a "transfer ALL,
+    then unlock ALL" regression, which would still leave every item but the
+    last unlocked-in-vault during an interruption — so this asserts the exact
+    interleaved call sequence, not just a single index comparison."""
     calls = []
 
     async def fake_transfer(mtype, item_hash, instance_id, character_id, to_vault,
@@ -210,20 +216,27 @@ async def test_sweep_transfers_then_unlocks_in_that_order(app_client, clean_db, 
 
     uid = await login_user(app_client, monkeypatch)
     await _seed_manifest(clean_db)
+    vault_items = [
+        {"itemInstanceId": "inst-1", "itemHash": 777, "state": 1, "bucketHash": 138197802},
+        {"itemInstanceId": "inst-2", "itemHash": 777, "state": 1, "bucketHash": 138197802},
+    ]
     await cache_repo.set(clean_db, uid, "profile_cache",
-                         json.dumps(_profile_with("inst-1", 777, locked=True)), 3600)
+                         json.dumps(_profile_multi(vault_items)), 3600)
     await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
     await user_tables.set_tag(clean_db, uid, "inst-1", "junk")
+    await user_tables.set_tag(clean_db, uid, "inst-2", "junk")
 
     resp = await app_client.post("/api/dismantle/sweep", json={
-        "characterId": _CHAR_ID, "instanceIds": ["inst-1"], "overrides": ["inst-1"],
+        "characterId": _CHAR_ID, "instanceIds": ["inst-1", "inst-2"],
+        "overrides": ["inst-1", "inst-2"],
     }, headers=_csrf_header(app_client))
     assert resp.status_code == 200, resp.text
-    assert resp.json()["staged"] == ["inst-1"]
+    assert resp.json()["staged"] == ["inst-1", "inst-2"]
 
-    kinds = [c[0] for c in calls]
-    assert kinds.index("transfer") < kinds.index("lock")
-    assert ("lock", "inst-1", False) in calls
+    assert calls == [
+        ("transfer", "inst-1"), ("lock", "inst-1", False),
+        ("transfer", "inst-2"), ("lock", "inst-2", False),
+    ]
 
 
 async def test_sweep_records_prior_lock_state_for_undo(app_client, clean_db, monkeypatch):
@@ -279,6 +292,140 @@ async def test_sweep_does_not_overwrite_recorded_lock_state_on_restage(app_clien
     assert resp2.json()["staged"] == ["inst-1"]
     # The load-bearing assertion: the recorded lock state must still be True.
     assert await user_tables.get_staged_sweep(clean_db, uid) == {"inst-1": True}
+
+
+async def test_sweep_partial_failure_reports_failed_and_keeps_successes_staged(app_client, clean_db, monkeypatch):
+    """Partial-failure contract: one item's transfer fails (BungieApiError),
+    it lands in `failed` with its error, the loop continues, and the other
+    item is still staged and still recorded — no rollback of successes."""
+    async def fake_transfer(mtype, item_hash, instance_id, character_id, to_vault,
+                            access, settings, http_client):
+        if instance_id == "inst-2":
+            raise BungieApiError("simulated transfer failure")
+
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", _noop_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+
+    uid = await login_user(app_client, monkeypatch)
+    await _seed_manifest(clean_db)
+    vault_items = [
+        {"itemInstanceId": "inst-1", "itemHash": 777, "state": 0, "bucketHash": 138197802},
+        {"itemInstanceId": "inst-2", "itemHash": 777, "state": 0, "bucketHash": 138197802},
+    ]
+    await cache_repo.set(clean_db, uid, "profile_cache",
+                         json.dumps(_profile_multi(vault_items)), 3600)
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
+    await user_tables.set_tag(clean_db, uid, "inst-1", "junk")
+    await user_tables.set_tag(clean_db, uid, "inst-2", "junk")
+
+    resp = await app_client.post("/api/dismantle/sweep", json={
+        "characterId": _CHAR_ID, "instanceIds": ["inst-1", "inst-2"], "overrides": [],
+    }, headers=_csrf_header(app_client))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["staged"] == ["inst-1"]
+    assert body["failed"] == [{"instanceId": "inst-2", "error": "simulated transfer failure"}]
+    # inst-2's transfer never ran to completion, so it should never have been
+    # recorded — only inst-1, which fully succeeded.
+    assert await user_tables.get_staged_sweep(clean_db, uid) == {"inst-1": False}
+
+
+async def test_sweep_unlock_timeout_preserves_recorded_lock_state(app_client, clean_db, monkeypatch):
+    """FINDING 1 regression guard. httpx.ReadTimeout is an httpx.RequestError
+    — a SIBLING of HTTPStatusError, not a subclass — so the handler's except
+    clause must catch it explicitly or a bare network blip on one item's
+    unlock call would propagate uncaught and abort the whole sweep.
+
+    More importantly: the item whose unlock times out must still have its
+    true prior lock state recorded, because the write now happens right after
+    its transfer succeeds and before the unlock call that failed — not
+    batched up and flushed only after the entire loop finishes. And the
+    batch must continue past the failure: the item staged after the failing
+    one must still be transferred, unlocked, and recorded too."""
+    calls = []
+
+    async def fake_transfer(mtype, item_hash, instance_id, character_id, to_vault,
+                            access, settings, http_client):
+        calls.append(("transfer", instance_id))
+
+    async def fake_lock(mtype, instance_id, character_id, state, access, settings, http_client):
+        calls.append(("lock", instance_id, state))
+        if instance_id == "inst-2":
+            raise httpx.ReadTimeout("simulated network timeout")
+
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", fake_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+
+    uid = await login_user(app_client, monkeypatch)
+    await _seed_manifest(clean_db)
+    vault_items = [
+        {"itemInstanceId": "inst-1", "itemHash": 777, "state": 1, "bucketHash": 138197802},
+        {"itemInstanceId": "inst-2", "itemHash": 777, "state": 1, "bucketHash": 138197802},
+        {"itemInstanceId": "inst-3", "itemHash": 777, "state": 1, "bucketHash": 138197802},
+    ]
+    await cache_repo.set(clean_db, uid, "profile_cache",
+                         json.dumps(_profile_multi(vault_items)), 3600)
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
+    for iid in ("inst-1", "inst-2", "inst-3"):
+        await user_tables.set_tag(clean_db, uid, iid, "junk")
+
+    resp = await app_client.post("/api/dismantle/sweep", json={
+        "characterId": _CHAR_ID, "instanceIds": ["inst-1", "inst-2", "inst-3"],
+        "overrides": ["inst-1", "inst-2", "inst-3"],
+    }, headers=_csrf_header(app_client))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["staged"] == ["inst-1", "inst-3"]
+    assert body["failed"] == [{"instanceId": "inst-2", "error": "simulated network timeout"}]
+    # All three transfers ran (the timeout happened on the unlock call), and
+    # the loop continued past inst-2's failure to process inst-3.
+    assert [c for c in calls if c[0] == "transfer"] == [
+        ("transfer", "inst-1"), ("transfer", "inst-2"), ("transfer", "inst-3"),
+    ]
+
+    # The load-bearing assertion: inst-2's transfer succeeded before its
+    # unlock blew up, so its true prior lock state (True) must still have
+    # been recorded, exactly like inst-1 and inst-3.
+    assert await user_tables.get_staged_sweep(clean_db, uid) == {
+        "inst-1": True, "inst-2": True, "inst-3": True,
+    }
+
+
+async def test_sweep_override_cannot_unblock_an_equipped_weapon(app_client, clean_db, monkeypatch):
+    """The equipped block is a hard block — never overridable — even for the
+    live-writing endpoint, not just the pure blocklist layer. Passing the
+    equipped item's id in both instanceIds and overrides must still reject
+    it, and must never touch Bungie's transfer endpoint for it."""
+    calls = []
+
+    async def fake_transfer(mtype, item_hash, instance_id, character_id, to_vault,
+                            access, settings, http_client):
+        calls.append(instance_id)
+
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", _noop_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+
+    uid = await login_user(app_client, monkeypatch)
+    await _seed_manifest(clean_db)
+    equipped_items = [
+        {"itemInstanceId": "inst-3", "itemHash": 777, "state": 0, "bucketHash": 138197802},
+    ]
+    await cache_repo.set(clean_db, uid, "profile_cache",
+                         json.dumps(_profile_multi([], equipped_items)), 3600)
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
+    await user_tables.set_tag(clean_db, uid, "inst-3", "junk")
+
+    resp = await app_client.post("/api/dismantle/sweep", json={
+        "characterId": _CHAR_ID, "instanceIds": ["inst-3"], "overrides": ["inst-3"],
+    }, headers=_csrf_header(app_client))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["staged"] == []
+    assert body["rejected"] == [{"instanceId": "inst-3", "reason": "equipped"}]
+    assert calls == []
 
 
 async def test_sweep_rejects_an_instance_the_preview_never_offered(app_client, clean_db, monkeypatch):
