@@ -98,6 +98,10 @@ export interface WeaponDto {
   ratedPerks: RatedPerk[];
   icon: string;
   equipped: boolean;
+  isCrafted?: boolean;
+  /** "shapeable" = the verdict describes what this weapon COULD be shaped into,
+   *  not what it currently holds. Optional: cached DTOs predate the field. */
+  scoredFrom?: "current" | "shapeable";
 }
 
 export interface RatedPerk {

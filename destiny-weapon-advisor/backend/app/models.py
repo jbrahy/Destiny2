@@ -31,6 +31,11 @@ class OwnedWeapon:
     is_exotic: bool = False
     bucket_hash: int = 0
     is_locked: bool = False
+    is_crafted: bool = False
+    # Trait perks this weapon can be shaped into, one list per column. Populated
+    # only for crafted weapons -- resolving it for every weapon would cost a
+    # manifest walk per item for data that cannot be acted on.
+    trait_pool: list[list[str]] = field(default_factory=list)
 
 
 @dataclass

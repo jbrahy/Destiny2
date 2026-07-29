@@ -195,6 +195,10 @@ def weapon_to_dict(weapon, info: dict) -> dict:
         "ratedPerks": info["rated"],
         "icon": weapon.icon,
         "equipped": weapon.equipped,
+        "isCrafted": weapon.is_crafted,
+        # "shapeable" means the verdict describes what this weapon COULD be
+        # shaped into, not what it currently holds -- label it as such in the UI.
+        "scoredFrom": info.get("scored_from", "current"),
     }
 
 
@@ -217,7 +221,7 @@ async def _compute_weapons(pool, uid: int, manifest: Manifest, profile: dict) ->
     await cache.set(pool, uid, "perk_desc_map", json.dumps(desc_map), settings.user_cache_ttl_seconds)
     await cache.set(pool, uid, "perk_icon_map", json.dumps(icon_map), settings.user_cache_ttl_seconds)
     ratings = await perk_ratings_repo.load(pool, uid)
-    scored = score_by_perks(owned, ratings)
+    scored = score_by_perks(owned, ratings, use_potential=settings.score_crafted_potential)
     result = {
         "weapons": [weapon_to_dict(s["weapon"], s) for s in scored],
         "cachedAt": time.time(),

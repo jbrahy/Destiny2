@@ -118,7 +118,15 @@ export function WeaponDetail({
 
       {w.ratedPerks.length > 0 ? (
         <>
-          <h3 style={{ margin: "12px 0 4px" }}>Why (rated perks)</h3>
+          <h3 style={{ margin: "12px 0 4px" }}>
+            {w.scoredFrom === "shapeable" ? "Why (best shapeable roll)" : "Why (rated perks)"}
+          </h3>
+          {w.scoredFrom === "shapeable" && (
+            <p style={{ margin: "0 0 6px", fontSize: 12, color: "var(--muted)" }}>
+              These are perks this crafted weapon could be <em>shaped into</em> at the
+              Enclave — not what it currently has. Its current roll is under “Roll”.
+            </p>
+          )}
           {w.ratedPerks.map((p) => (
             <div key={p.name} style={{ marginBottom: 3 }}>
               <strong>{p.rating}</strong> · {p.name}

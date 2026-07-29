@@ -3,6 +3,19 @@ import { elementColor } from "../visual";
 import { Icon } from "./Icon";
 import { TagChip } from "./TagSelect";
 
+/** A shapeable verdict is about potential, not the current roll. Without a
+ *  marker a god-roll badge on a mediocre roll reads as a bug. */
+function ShapeableChip() {
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 700, color: "#fff", background: "#6a1b9a",
+      borderRadius: 4, padding: "1px 5px", marginLeft: 6, whiteSpace: "nowrap",
+    }} title="Verdict reflects the best roll this crafted weapon could be shaped into">
+      shapeable
+    </span>
+  );
+}
+
 const BADGE: Record<Verdict, { label: string; color: string }> = {
   god_roll: { label: VERDICT_LABEL.god_roll, color: "#2e7d32" },
   masterwork: { label: VERDICT_LABEL.masterwork, color: "#1565c0" },
@@ -52,6 +65,7 @@ export function WeaponCard({
             )}
             <TagChip tag={tag} />
             <span style={{ color: badge.color, fontWeight: 600 }}>{badge.label}</span>
+            {w.scoredFrom === "shapeable" && <ShapeableChip />}
           </span>
         </div>
         <div style={{ fontSize: 12, color: "var(--muted)", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>

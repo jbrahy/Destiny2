@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # Behavior
     user_cache_ttl_seconds: int = 300
     bungie_throttle_concurrency: int = 20
+    # Score crafted weapons on the best roll they could be SHAPED into rather
+    # than what is currently socketed. Off by default: turning it on changes
+    # verdicts for every crafted weapon.
+    score_crafted_potential: bool = False
 
 
 @lru_cache

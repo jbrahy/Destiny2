@@ -3,6 +3,7 @@ import httpx
 from app.config import Settings
 from app.manifest import Manifest
 from app.models import ArmorPiece, OwnedWeapon
+from app.roll_pool import trait_columns
 
 
 class BungieApiError(Exception):
@@ -35,6 +36,7 @@ def _raise_for_bungie(resp: httpx.Response) -> None:
 _BASE = "https://www.bungie.net/Platform"
 _MASTERWORK_STATE = 4
 _LOCKED_STATE = 1
+_CRAFTED_STATE = 8
 PROFILE_COMPONENTS = "102,200,201,205,300,302,304,305,310"
 
 DAMAGE_TYPES = {1: "Kinetic", 2: "Arc", 3: "Solar", 4: "Void", 6: "Stasis", 7: "Strand"}
@@ -71,6 +73,7 @@ def assemble_weapons(profile: dict, manifest: Manifest) -> list[OwnedWeapon]:
         item_hash = item.get("itemHash")
         if not instance_id or not manifest.is_weapon(item_hash):
             continue
+        is_crafted = bool(item.get("state", 0) & _CRAFTED_STATE)
         socket_list = sockets.get(instance_id, {}).get("sockets", [])
         plug_hashes = [s["plugHash"] for s in socket_list if s.get("plugHash") is not None]
         frame = next(
@@ -110,6 +113,10 @@ def assemble_weapons(profile: dict, manifest: Manifest) -> list[OwnedWeapon]:
                 equipped=equipped,
                 is_exotic=manifest.tier_type(item_hash) == 6,
                 bucket_hash=manifest.bucket_hash(item_hash),
+                is_crafted=is_crafted,
+                # Only crafted weapons can actually be reshaped, so only they
+                # pay the manifest walk to resolve a trait pool.
+                trait_pool=trait_columns(item_hash, manifest) if is_crafted else [],
                 is_locked=bool(item.get("state", 0) & _LOCKED_STATE),
             )
         )

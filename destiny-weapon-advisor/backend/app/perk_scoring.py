@@ -38,17 +38,49 @@ def explain_verdict(
     return "", None
 
 
-def score_weapon(weapon: OwnedWeapon, ratings: PerkRatings):
-    """Return (verdict, rated_perks, note, tags) for a single weapon, judging it
-    by the ratings of the perks it actually rolled (for its weapon type)."""
+def _rate_potential(weapon: OwnedWeapon, ratings: PerkRatings) -> list[dict]:
+    """Best-rated trait per column from a shapeable weapon's pool.
+
+    ONE per column: perks in a column are mutually exclusive, so a union would
+    let two A-tier perks in the same column satisfy `strong >= 2` and promote a
+    weapon to a god roll it can never actually hold.
+    """
     rated = []
-    for name in weapon.perk_names:
-        info = ratings.get(name, weapon.weapon_type)
-        if info:
-            rated.append(
-                {"name": name, "rating": info["rating"],
-                 "reason": info.get("reason", ""), "tags": info.get("tags", [])}
-            )
+    for names in weapon.trait_pool:
+        scored = [
+            (TIER_SCORE.get(info["rating"], 0), name, info)
+            for name in names
+            for info in [ratings.get(name, weapon.weapon_type)] if info
+        ]
+        if not scored:
+            continue
+        _, name, info = max(scored, key=lambda t: t[0])
+        rated.append(
+            {"name": name, "rating": info["rating"],
+             "reason": info.get("reason", ""), "tags": info.get("tags", [])}
+        )
+    return rated
+
+
+def score_weapon(weapon: OwnedWeapon, ratings: PerkRatings, use_potential: bool = False):
+    """Return (verdict, rated_perks, note, tags) for a single weapon.
+
+    By default it judges the perks actually socketed. With `use_potential` and a
+    crafted weapon's trait pool, it judges the best combination the weapon could
+    be shaped into instead — the same thresholds either way, only the input set
+    differs, so the two can never drift apart.
+    """
+    if use_potential and weapon.trait_pool:
+        rated = _rate_potential(weapon, ratings)
+    else:
+        rated = []
+        for name in weapon.perk_names:
+            info = ratings.get(name, weapon.weapon_type)
+            if info:
+                rated.append(
+                    {"name": name, "rating": info["rating"],
+                     "reason": info.get("reason", ""), "tags": info.get("tags", [])}
+                )
     if not rated:
         return Verdict.NO_DATA, [], "", []
 
@@ -73,17 +105,23 @@ def score_weapon(weapon: OwnedWeapon, ratings: PerkRatings):
     return verdict, rated, note, tags
 
 
-def score_by_perks(weapons: list[OwnedWeapon], ratings: PerkRatings) -> list[dict]:
+def score_by_perks(
+    weapons: list[OwnedWeapon], ratings: PerkRatings, use_potential: bool = False,
+) -> list[dict]:
     counts: dict[int, int] = {}
     for w in weapons:
         counts[w.item_hash] = counts.get(w.item_hash, 0) + 1
 
     results = []
     for w in weapons:
-        verdict, rated, note, tags = score_weapon(w, ratings)
+        scored_potential = bool(use_potential and w.trait_pool)
+        verdict, rated, note, tags = score_weapon(w, ratings, use_potential=use_potential)
         results.append(
             {"weapon": w, "verdict": verdict, "rated": rated, "note": note,
-             "tags": tags, "is_duplicate": counts[w.item_hash] > 1}
+             "tags": tags, "is_duplicate": counts[w.item_hash] > 1,
+             # So the UI can say "could be shaped into" rather than implying the
+             # weapon already holds these perks.
+             "scored_from": "shapeable" if scored_potential else "current"}
         )
 
     # Demote unremarkable random-roll dupes to DISMANTLE when a better copy exists.
