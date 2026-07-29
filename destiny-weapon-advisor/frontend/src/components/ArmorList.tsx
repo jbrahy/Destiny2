@@ -9,12 +9,14 @@ import { TagChip, TagSelect } from "./TagSelect";
 
 const SLOTS = ["Helmet", "Gauntlets", "Chest Armor", "Leg Armor", "Class Item"];
 
-type ArmorSortKey = "slot" | "total_desc" | "power_desc" | "rating" | "name";
+export type ArmorSortKey =
+  | "slot" | "total_desc" | "power_desc" | "power_asc" | "rating" | "name";
 
 const ARMOR_SORTS: { value: ArmorSortKey; label: string }[] = [
   { value: "slot", label: "Slot (then total)" },
   { value: "total_desc", label: "Total stats: High \u2192 Low" },
   { value: "power_desc", label: "Power: High \u2192 Low" },
+  { value: "power_asc", label: "Power: Low \u2192 High" },
   { value: "rating", label: "Rating (best first)" },
   { value: "name", label: "Name (A\u2013Z)" },
 ];
@@ -23,7 +25,7 @@ function total(a: ArmorPiece): number {
   return Object.values(a.stats).reduce((x, y) => x + y, 0);
 }
 
-interface Rating {
+export interface Rating {
   label: string;
   color: string;
   rank: number; // lower = better, for sorting
@@ -41,7 +43,8 @@ function rate(a: ArmorPiece, maxInSlot: number): Rating {
 }
 
 // Ties break on total stats so equal-rated pieces keep a useful order.
-function compareArmor(
+// Exported for unit testing -- this is pure comparison logic.
+export function compareArmor(
   x: { a: ArmorPiece; r: Rating }, y: { a: ArmorPiece; r: Rating }, sort: ArmorSortKey,
 ): number {
   switch (sort) {
@@ -49,6 +52,8 @@ function compareArmor(
       return total(y.a) - total(x.a) || y.a.power - x.a.power;
     case "power_desc":
       return y.a.power - x.a.power || total(y.a) - total(x.a);
+    case "power_asc":
+      return x.a.power - y.a.power || total(y.a) - total(x.a);
     case "rating":
       return x.r.rank - y.r.rank || total(y.a) - total(x.a);
     case "name":
