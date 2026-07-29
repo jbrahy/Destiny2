@@ -451,11 +451,14 @@ async def dismantle_preview(
     plan = dismantle_logic.plan_batch(
         candidates, [c.instance_id for c in candidates if not c.blocked], occupancy
     )
+    # Staged sweeps are scoped per Destiny membership (see user_sweep_items),
+    # so read from the same membership id the cached profile was built from.
+    mid = await cache.get(pool, uid, "profile_membership_id")
     return {
         "candidates": [_candidate_to_dict(c) for c in candidates],
         "plan": {"staged": plan.staged, "deferred": plan.deferred,
                  "perBucket": {str(k): v for k, v in plan.per_bucket.items()}},
-        "staged": await user_tables.get_staged_sweep(pool, uid),
+        "staged": await user_tables.get_staged_sweep(pool, uid, mid or ""),
     }
 
 
@@ -505,10 +508,6 @@ async def dismantle_sweep(
 
     by_id = {c.instance_id: c for c in candidates}
     locked_now = _locked_instance_ids(profile)
-    # Never re-record lock state for an instance already staged. Staging unlocks
-    # the item, so a second pass would read it as unlocked and overwrite the true
-    # original with False — destroying exactly what undo needs to restore.
-    already_staged = await user_tables.get_staged_sweep(pool, uid)
     throttle = request.app.state.throttle
     staged: list[str] = []
     failed: list[dict] = []
@@ -523,6 +522,10 @@ async def dismantle_sweep(
         if cached_mid != mid:
             raise HTTPException(status_code=400, detail="Your cached inventory is for a "
                                 "different account — open Weapons and Refresh, then retry.")
+        # Never re-record lock state for an instance already staged. Staging unlocks
+        # the item, so a second pass would read it as unlocked and overwrite the true
+        # original with False — destroying exactly what undo needs to restore.
+        already_staged = await user_tables.get_staged_sweep(pool, uid, mid)
         for instance_id in plan.staged:
             candidate = by_id[instance_id]
             try:
@@ -533,7 +536,7 @@ async def dismantle_sweep(
                     # network error on the unlock call below can never lose the
                     # undo record for an item that ends up unlocked.
                     await user_tables.stage_sweep_items(
-                        pool, uid, [(instance_id, instance_id in locked_now)]
+                        pool, uid, mid, [(instance_id, instance_id in locked_now)]
                     )
                 await throttle.run(lambda iid=instance_id: set_item_lock_state(
                     # iid=instance_id binds the loop variable's *current* value at
@@ -567,6 +570,22 @@ def _instance_item_hashes(profile: dict) -> dict[str, int]:
     return out
 
 
+def _lock_character_id(profile: dict, instance_id: str, fallback: str) -> str:
+    """Character id to send with the re-lock call. Nothing records which
+    character a sweep staged an item to, and the item may currently sit on a
+    different character than whichever one is selected in the undo request —
+    so prefer the character that actually owns the item right now (resolved
+    the same way _move_one finds its transfer source), falling back to the
+    request's characterId only when the item isn't tied to a specific
+    character (already in the vault, or not found)."""
+    location = _find_item_location(profile, instance_id)
+    if location is None or location == "vault":
+        return fallback
+    if location.startswith("equipped:"):
+        return location.split(":", 1)[1]
+    return location
+
+
 @app.post("/api/dismantle/undo")
 async def dismantle_undo(
     request: Request,
@@ -588,12 +607,6 @@ async def dismantle_undo(
     """
     settings = get_settings()
     uid = current_user["user_id"]
-    staged = await user_tables.get_staged_sweep(pool, uid)
-    if not staged:
-        return {"restored": [], "failed": []}
-
-    profile = await _load_profile_or_400(pool, uid)
-    item_hashes = _instance_item_hashes(profile)
     throttle = request.app.state.throttle
     restored: list[str] = []
     failed: list[dict] = []
@@ -604,6 +617,14 @@ async def dismantle_undo(
         access, mtype, mid = await valid_access_token(
             pool, uid, settings, client, settings.token_enc_key
         )
+        # Staged sweeps are scoped per Destiny membership: an account switch
+        # must never let undo see (and wipe) another membership's records.
+        staged = await user_tables.get_staged_sweep(pool, uid, mid)
+        if not staged:
+            return {"restored": [], "failed": []}
+
+        profile = await _load_profile_or_400(pool, uid)
+        item_hashes = _instance_item_hashes(profile)
         for instance_id, was_locked in staged.items():
             item_hash = item_hashes.get(instance_id)
             if item_hash is None:
@@ -612,8 +633,9 @@ async def dismantle_undo(
                 continue
             try:
                 if was_locked:
-                    await throttle.run(lambda iid=instance_id: set_item_lock_state(
-                        mtype, iid, body.characterId, True, access, settings, client
+                    lock_char = _lock_character_id(profile, instance_id, body.characterId)
+                    await throttle.run(lambda iid=instance_id, cid=lock_char: set_item_lock_state(
+                        mtype, iid, cid, True, access, settings, client
                     ))
                 await _move_one(client, settings, access, mtype, profile, instance_id,
                                 item_hash, "vault", False, throttle)
@@ -623,7 +645,7 @@ async def dismantle_undo(
             restored.append(instance_id)
         fresh = await throttle.run(lambda: get_profile(mtype, mid, access, settings, client))
 
-    await user_tables.clear_sweep_items(pool, uid, restored)
+    await user_tables.clear_sweep_items(pool, uid, mid, restored)
     await _save_profile(pool, uid, fresh, mid)
     return {"restored": restored, "failed": failed}
 

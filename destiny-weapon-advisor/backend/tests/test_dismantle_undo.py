@@ -11,6 +11,8 @@ from app.repositories import users as users_repo
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
+_MID = "mem-1"
+
 
 @pytest_asyncio.fixture(loop_scope="session")
 async def two_users(clean_db):
@@ -23,32 +25,44 @@ async def two_users(clean_db):
 
 async def test_staged_rows_round_trip_with_lock_state(two_users):
     pool, uid, _ = two_users
-    await user_tables.stage_sweep_items(pool, uid, [("a", True), ("b", False)])
-    assert await user_tables.get_staged_sweep(pool, uid) == {"a": True, "b": False}
+    await user_tables.stage_sweep_items(pool, uid, _MID, [("a", True), ("b", False)])
+    assert await user_tables.get_staged_sweep(pool, uid, _MID) == {"a": True, "b": False}
 
 
 async def test_staging_the_same_instance_twice_updates_rather_than_duplicates(two_users):
     pool, uid, _ = two_users
-    await user_tables.stage_sweep_items(pool, uid, [("a", True)])
-    await user_tables.stage_sweep_items(pool, uid, [("a", False)])
-    assert await user_tables.get_staged_sweep(pool, uid) == {"a": False}
+    await user_tables.stage_sweep_items(pool, uid, _MID, [("a", True)])
+    await user_tables.stage_sweep_items(pool, uid, _MID, [("a", False)])
+    assert await user_tables.get_staged_sweep(pool, uid, _MID) == {"a": False}
 
 
 async def test_clear_removes_only_the_named_instances(two_users):
     pool, uid, _ = two_users
-    await user_tables.stage_sweep_items(pool, uid, [("a", True), ("b", True)])
-    await user_tables.clear_sweep_items(pool, uid, ["a"])
-    assert await user_tables.get_staged_sweep(pool, uid) == {"b": True}
+    await user_tables.stage_sweep_items(pool, uid, _MID, [("a", True), ("b", True)])
+    await user_tables.clear_sweep_items(pool, uid, _MID, ["a"])
+    assert await user_tables.get_staged_sweep(pool, uid, _MID) == {"b": True}
 
 
 async def test_clear_with_an_empty_list_is_a_no_op(two_users):
     pool, uid, _ = two_users
-    await user_tables.stage_sweep_items(pool, uid, [("a", True)])
-    await user_tables.clear_sweep_items(pool, uid, [])
-    assert await user_tables.get_staged_sweep(pool, uid) == {"a": True}
+    await user_tables.stage_sweep_items(pool, uid, _MID, [("a", True)])
+    await user_tables.clear_sweep_items(pool, uid, _MID, [])
+    assert await user_tables.get_staged_sweep(pool, uid, _MID) == {"a": True}
 
 
 async def test_sweeps_are_isolated_per_user(two_users):
     pool, uid_a, uid_b = two_users
-    await user_tables.stage_sweep_items(pool, uid_a, [("a", True)])
-    assert await user_tables.get_staged_sweep(pool, uid_b) == {}
+    await user_tables.stage_sweep_items(pool, uid_a, _MID, [("a", True)])
+    assert await user_tables.get_staged_sweep(pool, uid_b, _MID) == {}
+
+
+async def test_sweeps_are_isolated_per_membership(two_users):
+    """FINDING 1: an account switch must not let undo see (and then wipe) a
+    different Destiny membership's staged rows on the same user_id. Staging
+    under membership A must be invisible to a get_staged_sweep call scoped
+    to membership B, even for the identical user."""
+    pool, uid, _ = two_users
+    await user_tables.stage_sweep_items(pool, uid, "membership-A", [("a", True)])
+    assert await user_tables.get_staged_sweep(pool, uid, "membership-B") == {}
+    # And membership A's rows are untouched by that lookup.
+    assert await user_tables.get_staged_sweep(pool, uid, "membership-A") == {"a": True}

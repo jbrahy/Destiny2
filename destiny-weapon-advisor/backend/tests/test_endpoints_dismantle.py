@@ -255,7 +255,7 @@ async def test_sweep_records_prior_lock_state_for_undo(app_client, clean_db, mon
         "characterId": _CHAR_ID, "instanceIds": ["inst-1"], "overrides": ["inst-1"],
     }, headers=_csrf_header(app_client))
     assert resp.status_code == 200, resp.text
-    assert await user_tables.get_staged_sweep(clean_db, uid) == {"inst-1": True}
+    assert await user_tables.get_staged_sweep(clean_db, uid, "bm1") == {"inst-1": True}
 
 
 async def test_sweep_does_not_overwrite_recorded_lock_state_on_restage(app_client, clean_db, monkeypatch):
@@ -281,7 +281,7 @@ async def test_sweep_does_not_overwrite_recorded_lock_state_on_restage(app_clien
         "characterId": _CHAR_ID, "instanceIds": ["inst-1"], "overrides": ["inst-1"],
     }, headers=_csrf_header(app_client))
     assert resp1.status_code == 200, resp1.text
-    assert await user_tables.get_staged_sweep(clean_db, uid) == {"inst-1": True}
+    assert await user_tables.get_staged_sweep(clean_db, uid, "bm1") == {"inst-1": True}
 
     # Second sweep over the same already-staged instance: it is no longer
     # blocked (the cache now shows it unlocked), so no override is needed.
@@ -291,7 +291,7 @@ async def test_sweep_does_not_overwrite_recorded_lock_state_on_restage(app_clien
     assert resp2.status_code == 200, resp2.text
     assert resp2.json()["staged"] == ["inst-1"]
     # The load-bearing assertion: the recorded lock state must still be True.
-    assert await user_tables.get_staged_sweep(clean_db, uid) == {"inst-1": True}
+    assert await user_tables.get_staged_sweep(clean_db, uid, "bm1") == {"inst-1": True}
 
 
 async def test_sweep_partial_failure_reports_failed_and_keeps_successes_staged(app_client, clean_db, monkeypatch):
@@ -328,7 +328,7 @@ async def test_sweep_partial_failure_reports_failed_and_keeps_successes_staged(a
     assert body["failed"] == [{"instanceId": "inst-2", "error": "simulated transfer failure"}]
     # inst-2's transfer never ran to completion, so it should never have been
     # recorded — only inst-1, which fully succeeded.
-    assert await user_tables.get_staged_sweep(clean_db, uid) == {"inst-1": False}
+    assert await user_tables.get_staged_sweep(clean_db, uid, "bm1") == {"inst-1": False}
 
 
 async def test_sweep_unlock_timeout_preserves_recorded_lock_state(app_client, clean_db, monkeypatch):
@@ -388,7 +388,7 @@ async def test_sweep_unlock_timeout_preserves_recorded_lock_state(app_client, cl
     # The load-bearing assertion: inst-2's transfer succeeded before its
     # unlock blew up, so its true prior lock state (True) must still have
     # been recorded, exactly like inst-1 and inst-3.
-    assert await user_tables.get_staged_sweep(clean_db, uid) == {
+    assert await user_tables.get_staged_sweep(clean_db, uid, "bm1") == {
         "inst-1": True, "inst-2": True, "inst-3": True,
     }
 
@@ -473,7 +473,7 @@ async def test_undo_relocks_then_returns_items_to_the_vault(app_client, clean_db
     profile["profileInventory"]["data"]["items"] = []
     await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
     await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
-    await user_tables.stage_sweep_items(clean_db, uid, [("inst-1", True)])
+    await user_tables.stage_sweep_items(clean_db, uid, "bm1", [("inst-1", True)])
 
     resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
                                  headers=_csrf_header(app_client))
@@ -498,12 +498,12 @@ async def test_undo_clears_the_staged_rows(app_client, clean_db, monkeypatch):
     profile["profileInventory"]["data"]["items"] = []
     await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
     await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
-    await user_tables.stage_sweep_items(clean_db, uid, [("inst-1", True)])
+    await user_tables.stage_sweep_items(clean_db, uid, "bm1", [("inst-1", True)])
 
     resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
                                  headers=_csrf_header(app_client))
     assert resp.status_code == 200, resp.text
-    assert await user_tables.get_staged_sweep(clean_db, uid) == {}
+    assert await user_tables.get_staged_sweep(clean_db, uid, "bm1") == {}
 
 
 async def test_undo_with_nothing_staged_is_a_no_op(app_client, clean_db, monkeypatch):
@@ -546,7 +546,7 @@ async def test_undo_mid_batch_failure_reports_failed_and_continues(app_client, c
     await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
     await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
     await user_tables.stage_sweep_items(
-        clean_db, uid, [("inst-1", True), ("inst-2", True), ("inst-3", True)]
+        clean_db, uid, "bm1", [("inst-1", True), ("inst-2", True), ("inst-3", True)]
     )
 
     resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
@@ -560,7 +560,7 @@ async def test_undo_mid_batch_failure_reports_failed_and_continues(app_client, c
     assert [c for c in calls if c[0] == "lock"] == [
         ("lock", "inst-1", True), ("lock", "inst-2", True), ("lock", "inst-3", True),
     ]
-    assert await user_tables.get_staged_sweep(clean_db, uid) == {"inst-2": True}
+    assert await user_tables.get_staged_sweep(clean_db, uid, "bm1") == {"inst-2": True}
 
 
 async def test_undo_read_timeout_is_caught_and_reported_as_failed(app_client, clean_db, monkeypatch):
@@ -591,7 +591,7 @@ async def test_undo_read_timeout_is_caught_and_reported_as_failed(app_client, cl
     profile["profileInventory"]["data"]["items"] = []
     await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
     await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
-    await user_tables.stage_sweep_items(clean_db, uid, [("inst-1", True)])
+    await user_tables.stage_sweep_items(clean_db, uid, "bm1", [("inst-1", True)])
 
     resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
                                  headers=_csrf_header(app_client))
@@ -601,7 +601,7 @@ async def test_undo_read_timeout_is_caught_and_reported_as_failed(app_client, cl
     assert body["failed"] == [{"instanceId": "inst-1", "error": "simulated network timeout"}]
     # The lock call was attempted (and blew up) but transfer never ran.
     assert calls == [("lock", "inst-1", True)]
-    assert await user_tables.get_staged_sweep(clean_db, uid) == {"inst-1": True}
+    assert await user_tables.get_staged_sweep(clean_db, uid, "bm1") == {"inst-1": True}
 
 
 async def test_undo_already_locked_item_restores_without_error(app_client, clean_db, monkeypatch):
@@ -632,7 +632,7 @@ async def test_undo_already_locked_item_restores_without_error(app_client, clean
     profile["profileInventory"]["data"]["items"] = []
     await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
     await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
-    await user_tables.stage_sweep_items(clean_db, uid, [("inst-1", True)])
+    await user_tables.stage_sweep_items(clean_db, uid, "bm1", [("inst-1", True)])
 
     resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
                                  headers=_csrf_header(app_client))
@@ -641,4 +641,167 @@ async def test_undo_already_locked_item_restores_without_error(app_client, clean
     assert body["restored"] == ["inst-1"]
     assert body["failed"] == []
     assert calls == [("lock", "inst-1", True), ("transfer", "inst-1")]
-    assert await user_tables.get_staged_sweep(clean_db, uid) == {}
+    assert await user_tables.get_staged_sweep(clean_db, uid, "bm1") == {}
+
+
+async def test_undo_missing_instance_counts_as_restored_not_failed(app_client, clean_db, monkeypatch):
+    """FINDING 2(a): an instance id staged for undo but no longer anywhere in
+    the cached profile was already dismantled in-game — the feature working
+    as intended — so it must land in `restored`, not `failed`, and must never
+    trigger a lock or transfer call."""
+    calls = []
+
+    async def fake_transfer(mtype, item_hash, instance_id, character_id, to_vault,
+                            access, settings, http_client):
+        calls.append(("transfer", instance_id))
+
+    async def fake_lock(mtype, instance_id, character_id, state, access, settings, http_client):
+        calls.append(("lock", instance_id, state))
+
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", fake_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+
+    uid = await login_user(app_client, monkeypatch)
+    # inst-missing is staged but never appears in the cached profile at all.
+    profile = _profile_with("inst-1", 777)
+    profile["profileInventory"]["data"]["items"] = []
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
+    await user_tables.stage_sweep_items(clean_db, uid, "bm1", [("inst-missing", True)])
+
+    resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
+                                 headers=_csrf_header(app_client))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["restored"] == ["inst-missing"]
+    assert body["failed"] == []
+    assert calls == []
+    assert await user_tables.get_staged_sweep(clean_db, uid, "bm1") == {}
+
+
+async def test_undo_does_not_relock_an_item_that_was_unlocked_before_the_sweep(app_client, clean_db, monkeypatch):
+    """FINDING 2(b): `was_locked=False` must never trigger a lock call — only
+    the transfer back to vault. Every other undo test stages with
+    was_locked=True, so nothing else in this file proves the guard exists."""
+    calls = []
+
+    async def fake_transfer(mtype, item_hash, instance_id, character_id, to_vault,
+                            access, settings, http_client):
+        calls.append(("transfer", instance_id))
+
+    async def fake_lock(mtype, instance_id, character_id, state, access, settings, http_client):
+        calls.append(("lock", instance_id, state))
+
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", fake_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+
+    uid = await login_user(app_client, monkeypatch)
+    profile = _profile_with("inst-1", 777)
+    profile["characterInventories"]["data"][_CHAR_ID]["items"] = [
+        {"itemInstanceId": "inst-1", "itemHash": 777, "state": 0, "bucketHash": _KINETIC},
+    ]
+    profile["profileInventory"]["data"]["items"] = []
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
+    await user_tables.stage_sweep_items(clean_db, uid, "bm1", [("inst-1", False)])
+
+    resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
+                                 headers=_csrf_header(app_client))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["restored"] == ["inst-1"]
+    assert calls == [("transfer", "inst-1")]
+
+
+async def test_undo_relocks_on_the_character_that_actually_owns_the_item(app_client, clean_db, monkeypatch):
+    """FINDING 3: nothing records which character a sweep staged an item to.
+    If the item currently sits on a different character than the one
+    selected in the undo request body, the re-lock call must target the
+    item's actual owning character (resolved via _find_item_location), not
+    blindly trust body.characterId — otherwise the lock call errors."""
+    _CHAR_ID_2 = "char-2"
+    calls = []
+
+    async def fake_transfer(mtype, item_hash, instance_id, character_id, to_vault,
+                            access, settings, http_client):
+        calls.append(("transfer", instance_id, character_id))
+
+    async def fake_lock(mtype, instance_id, character_id, state, access, settings, http_client):
+        calls.append(("lock", instance_id, character_id, state))
+
+    monkeypatch.setattr("app.main.transfer_item", fake_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", fake_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+
+    uid = await login_user(app_client, monkeypatch)
+    profile = _profile_with("inst-1", 777)
+    profile["characters"]["data"][_CHAR_ID_2] = {
+        "classType": 0, "light": 1800, "dateLastPlayed": "2024-01-01T00:00:00Z",
+    }
+    profile["characterInventories"]["data"][_CHAR_ID_2] = {"items": [
+        {"itemInstanceId": "inst-1", "itemHash": 777, "state": 0, "bucketHash": _KINETIC},
+    ]}
+    profile["profileInventory"]["data"]["items"] = []
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm1", 3600)
+    await user_tables.stage_sweep_items(clean_db, uid, "bm1", [("inst-1", True)])
+
+    # The undo request names _CHAR_ID (char-1), but inst-1 actually lives on
+    # char-2 — the character the (unrecorded) sweep staged it to.
+    resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
+                                 headers=_csrf_header(app_client))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["restored"] == ["inst-1"]
+    assert body["failed"] == []
+    assert ("lock", "inst-1", _CHAR_ID_2, True) in calls
+
+
+async def test_undo_after_account_switch_does_not_wipe_the_other_accounts_records(
+    app_client, clean_db, monkeypatch
+):
+    """FINDING 1, reproduced end-to-end: stage a sweep under Destiny
+    membership A, switch the active membership to B and load B's inventory
+    (so profile_cache and profile_membership_id are both B, exactly like a
+    real account switch), then call undo. Before the membership_id column,
+    every one of A's staged instance ids was absent from B's profile, so the
+    handler treated all of them as "already dismantled in-game", appended
+    them to `restored`, and cleared every row — a false success that wiped
+    the undo record for weapons that are still unlocked on account A. With
+    the fix, undo (correctly scoped to B) sees nothing staged and returns a
+    no-op, and A's rows must still be there afterward."""
+    monkeypatch.setattr("app.main.transfer_item", _noop_transfer)
+    monkeypatch.setattr("app.main.set_item_lock_state", _noop_lock)
+    monkeypatch.setattr("app.main.get_profile", _fake_get_profile)
+
+    uid = await login_user(app_client, monkeypatch)  # active membership: "bm1"
+
+    # Stage a sweep under account A ("bm1").
+    await user_tables.stage_sweep_items(clean_db, uid, "bm1", [("inst-1", True)])
+
+    # Switch the active Destiny membership to account B ("bm2") — mirrors
+    # POST /api/memberships/select, which is how a real account switch
+    # updates the tokens row valid_access_token reads from.
+    resp = await app_client.post("/api/memberships/select",
+                                 json={"membershipType": 3, "membershipId": "bm2"})
+    assert resp.status_code == 200, resp.text
+
+    # Load B's inventory: profile_cache and profile_membership_id both now
+    # reflect account B, and B's profile has no idea inst-1 ever existed.
+    b_profile = _profile_with("inst-9", 999)
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(b_profile), 3600)
+    await cache_repo.set(clean_db, uid, "profile_membership_id", "bm2", 3600)
+
+    resp = await app_client.post("/api/dismantle/undo", json={"characterId": _CHAR_ID},
+                                 headers=_csrf_header(app_client))
+    assert resp.status_code == 200, resp.text
+    # Undo, scoped to B, sees nothing staged — a true no-op, not a false
+    # "successfully restored everything".
+    assert resp.json() == {"restored": [], "failed": []}
+
+    # The load-bearing assertion: account A's staged row survived.
+    assert await user_tables.get_staged_sweep(clean_db, uid, "bm1") == {"inst-1": True}
+    # And it was never (incorrectly) visible under B's scope.
+    assert await user_tables.get_staged_sweep(clean_db, uid, "bm2") == {}

@@ -106,32 +106,35 @@ async def delete_armor_set(pool, user_id: int, name: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def stage_sweep_items(pool, user_id: int, rows: list[tuple[str, bool]]) -> None:
+async def stage_sweep_items(pool, user_id: int, membership_id: str, rows: list[tuple[str, bool]]) -> None:
     """Record staged items and the lock state each held before the sweep, so
-    undo can put it back exactly as it was."""
+    undo can put it back exactly as it was. Keyed by membership_id as well as
+    user_id: a user can hold sweeps staged against more than one Destiny
+    account, and rows from one must never bleed into another's undo."""
     if not rows:
         return
     async with pool.acquire() as conn, conn.cursor() as cur:
         await cur.executemany(
-            "INSERT INTO user_sweep_items (user_id, instance_id, was_locked) "
-            "VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE was_locked=VALUES(was_locked)",
-            [(user_id, instance_id, int(was_locked)) for instance_id, was_locked in rows],
+            "INSERT INTO user_sweep_items (user_id, membership_id, instance_id, was_locked) "
+            "VALUES (%s, %s, %s, %s) ON DUPLICATE KEY UPDATE was_locked=VALUES(was_locked)",
+            [(user_id, membership_id, instance_id, int(was_locked)) for instance_id, was_locked in rows],
         )
         await conn.commit()
 
 
-async def get_staged_sweep(pool, user_id: int) -> dict[str, bool]:
-    """Return {instance_id: was_locked} for this user's currently staged sweep."""
+async def get_staged_sweep(pool, user_id: int, membership_id: str) -> dict[str, bool]:
+    """Return {instance_id: was_locked} for this user's currently staged sweep
+    on the given Destiny membership."""
     async with pool.acquire() as conn, conn.cursor() as cur:
         await cur.execute(
-            "SELECT instance_id, was_locked FROM user_sweep_items WHERE user_id=%s",
-            (user_id,),
+            "SELECT instance_id, was_locked FROM user_sweep_items WHERE user_id=%s AND membership_id=%s",
+            (user_id, membership_id),
         )
         rows = await cur.fetchall()
     return {instance_id: bool(was_locked) for instance_id, was_locked in rows}
 
 
-async def clear_sweep_items(pool, user_id: int, instance_ids: list[str]) -> None:
+async def clear_sweep_items(pool, user_id: int, membership_id: str, instance_ids: list[str]) -> None:
     """Drop staged rows — after a successful undo, or once the user confirms
     the batch was dismantled in-game."""
     if not instance_ids:
@@ -139,7 +142,7 @@ async def clear_sweep_items(pool, user_id: int, instance_ids: list[str]) -> None
     placeholders = ", ".join(["%s"] * len(instance_ids))
     async with pool.acquire() as conn, conn.cursor() as cur:
         await cur.execute(
-            f"DELETE FROM user_sweep_items WHERE user_id=%s AND instance_id IN ({placeholders})",
-            (user_id, *instance_ids),
+            f"DELETE FROM user_sweep_items WHERE user_id=%s AND membership_id=%s AND instance_id IN ({placeholders})",
+            (user_id, membership_id, *instance_ids),
         )
         await conn.commit()
