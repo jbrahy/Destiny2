@@ -128,3 +128,58 @@ def enforce_blocklist(
         rejected.append({"instanceId": instance_id, "reason": candidate.blocked})
 
     return allowed, rejected
+
+
+@dataclass
+class BatchPlan:
+    staged: list[str]
+    deferred: list[str]
+    per_bucket: dict[int, dict]
+
+
+def bucket_occupancy(profile: dict, character_id: str) -> dict[int, int]:
+    """Count weapons already sitting unequipped in each of the target
+    character's weapon buckets. Equipped items live in characterEquipment and
+    do not consume inventory space, so they are correctly not counted here."""
+    occupancy = {bucket: 0 for bucket in WEAPON_BUCKETS}
+    inventories = profile.get("characterInventories", {}).get("data", {})
+    for item in inventories.get(character_id, {}).get("items", []):
+        bucket = item.get("bucketHash")
+        if bucket in occupancy:
+            occupancy[bucket] += 1
+    return occupancy
+
+
+def plan_batch(
+    candidates: list[Candidate], allowed_ids: list[str], occupancy: dict[int, int],
+) -> BatchPlan:
+    """Split an approved sweep into what fits on the character now and what
+    waits for the next pass. Preserves request order within each bucket."""
+    by_id = {c.instance_id: c for c in candidates}
+    free = {
+        bucket: max(0, BUCKET_CAPACITY - occupancy.get(bucket, 0))
+        for bucket in WEAPON_BUCKETS
+    }
+    staged_per_bucket = {bucket: 0 for bucket in WEAPON_BUCKETS}
+    staged: list[str] = []
+    deferred: list[str] = []
+
+    for instance_id in allowed_ids:
+        candidate = by_id.get(instance_id)
+        bucket = candidate.bucket_hash if candidate else None
+        if bucket not in free or free[bucket] <= 0:
+            deferred.append(instance_id)
+            continue
+        free[bucket] -= 1
+        staged_per_bucket[bucket] += 1
+        staged.append(instance_id)
+
+    per_bucket = {
+        bucket: {
+            "name": name,
+            "free": max(0, BUCKET_CAPACITY - occupancy.get(bucket, 0)),
+            "staged": staged_per_bucket[bucket],
+        }
+        for bucket, name in WEAPON_BUCKETS.items()
+    }
+    return BatchPlan(staged=staged, deferred=deferred, per_bucket=per_bucket)
