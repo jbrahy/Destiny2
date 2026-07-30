@@ -24,6 +24,22 @@ const BADGE: Record<Verdict, { label: string; color: string }> = {
   dismantle: { label: VERDICT_LABEL.dismantle, color: "#c62828" },
 };
 
+/** One metadata item carrying its own leading separator, so a wrap can never
+ *  strand a bare "·" at the end of one line or the start of the next. */
+function Meta(
+  { first, color, weight, title, children }: {
+    first?: boolean; color?: string; weight?: number; title?: string;
+    children: React.ReactNode;
+  },
+) {
+  return (
+    <span title={title} style={{ display: "inline-flex", alignItems: "center", gap: 5, color, fontWeight: weight }}>
+      {!first && <span style={{ color: "var(--border)" }} aria-hidden>·</span>}
+      {children}
+    </span>
+  );
+}
+
 export function WeaponCard({
   w, tag, comparing, onToggleCompare, onClick,
 }: {
@@ -46,11 +62,15 @@ export function WeaponCard({
     >
       <Icon path={w.icon} size={44} alt={w.name} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-          <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {/* The name owns this row. The verdict label sits below because
+            "Masterwork → God Roll" is 5x the length of "Good" — sharing the row
+            let it squeeze the name to zero width on exactly those cards. */}
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+          <strong style={{ fontSize: 15, lineHeight: 1.25, minWidth: 0, wordBreak: "break-word" }}>
             {w.name}
           </strong>
-          <span style={{ display: "flex", gap: 6, alignItems: "center", whiteSpace: "nowrap" }}>
+          <span style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+            <TagChip tag={tag} />
             {onToggleCompare && (
               <button
                 onClick={(e) => { e.stopPropagation(); onToggleCompare(); }}
@@ -63,24 +83,54 @@ export function WeaponCard({
                 }}
               >⇄</button>
             )}
-            <TagChip tag={tag} />
-            <span style={{ color: badge.color, fontWeight: 600 }}>{badge.label}</span>
-            {w.scoredFrom === "shapeable" && <ShapeableChip />}
           </span>
         </div>
-        <div style={{ fontSize: 12, color: "var(--muted)", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-          <span>{w.weaponType}</span>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: elementColor(w.element), display: "inline-block" }} />
-          <span>{w.element}</span>
-          {w.ammoType && <span>· {w.ammoType}</span>}
-          <span>· {w.location}</span>
-          {w.isMasterworked && <span>· ★</span>}
-          {w.equipped && <span style={{ color: "#2e7d32", fontWeight: 600 }}>· equipped</span>}
+
+        {/* Separators are their own elements, not "· " glued to the next label,
+            so wrapping can never strand a lone "· Vault" on its own line. */}
+        <div style={{
+          fontSize: 12, display: "flex", alignItems: "center",
+          gap: 5, flexWrap: "wrap", marginTop: 3,
+        }}>
+          {/* What it is, and how good — the verdict leads because that is what
+              you scan for across 751 cards. */}
+          <Meta first color={badge.color} weight={700}>{badge.label}</Meta>
+          {w.scoredFrom === "shapeable" && <ShapeableChip />}
+          <Meta color="var(--muted)">
+            <span style={{
+              width: 8, height: 8, borderRadius: "50%",
+              background: elementColor(w.element), flexShrink: 0,
+            }} />
+            {w.element} {w.weaponType}
+          </Meta>
+          {w.ammoType && <Meta color="var(--muted)">{w.ammoType}</Meta>}
         </div>
-        <div style={{ fontSize: 12, color: "var(--text)", marginTop: 2 }}>
-          {w.power > 0 && <span style={{ fontWeight: 600 }}>✦ {w.power}</span>}
-          {w.frame && <span> · {w.frame}</span>}
+
+        {/* Where it is and what state it's in — a different question, so a
+            different row. Splitting them keeps both short enough not to wrap. */}
+        <div style={{
+          fontSize: 12, color: "var(--text)", marginTop: 3,
+          display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap",
+        }}>
+          {w.power > 0 && <Meta first weight={600}>✦ {w.power}</Meta>}
+          {w.frame && <Meta first={w.power <= 0}>{w.frame}</Meta>}
+          <Meta color="var(--muted)">{w.location}</Meta>
+          {w.isMasterworked && <Meta title="Masterworked">★</Meta>}
+          {w.equipped && <Meta color="#2e7d32" weight={600}>equipped</Meta>}
         </div>
+
+        {/* The reason the weapon earned its verdict. Omitted entirely when there
+            is nothing to say, rather than leaving an empty row. */}
+        {w.matchedPerks.length > 0 && (
+          <div style={{
+            fontSize: 12, marginTop: 3, color: "var(--accent)",
+            display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap",
+          }}>
+            {w.matchedPerks.map((p, i) => (
+              <Meta key={p} first={i === 0}>{p}</Meta>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
