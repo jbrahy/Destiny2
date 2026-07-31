@@ -1,8 +1,8 @@
 {
-  "_meta": "PLACEHOLDER VALUES -- not yet calibrated. focus = sum of a piece's top 3 stats; a piece takes the highest band whose threshold it meets or exceeds. Real values are set by scripts/calibrate_armor_bands.py against an actual collection.",
+  "_meta": "Calibrated via scripts/calibrate_armor_bands.py against 375 real legendary pieces with stats. The distribution has a hard plateau at focus 74-75 spanning p75-p95, so top_roll is set to 80 -- ABOVE the plateau -- rather than the raw p90 (75), which would have misclassified 20% of the collection as top roll. Resulting split: top_roll 3%, good 22%, ok 36%, dismantle 36%.",
   "bands": {
-    "top_roll": 999,
-    "good": 999,
-    "ok": 999
+    "top_roll": 80,
+    "good": 74,
+    "ok": 60
   }
 }
