@@ -182,6 +182,7 @@ def weapon_to_dict(weapon, info: dict) -> dict:
         "element": weapon.element,
         "location": weapon.location,
         "isMasterworked": weapon.is_masterworked,
+        "isExotic": weapon.is_exotic,
         "verdict": info["verdict"].value,
         "matchedPerks": [r["name"] for r in info["rated"] if TIER_SCORE.get(r["rating"], 0) >= 4],
         "note": info["note"],
