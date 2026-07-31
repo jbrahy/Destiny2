@@ -9,6 +9,7 @@ import { DismantlePage } from "./DismantlePage";
 import { LoadoutsPage } from "./LoadoutsPage";
 import { Login } from "./Login";
 import { Nav, Section } from "./Nav";
+import { OutfitsPage } from "./OutfitsPage";
 import { PerksPage } from "./PerksPage";
 import { RecommendPage } from "./RecommendPage";
 import { SponsoredAds } from "./SponsoredAds";
@@ -45,6 +46,7 @@ export function AppShell() {
         {section === "perks" && <PerksPage />}
         {section === "armor" && <ArmorList />}
         {section === "builds" && <BuildsPage />}
+        {section === "outfits" && <OutfitsPage />}
         {section === "activities" && <ActivitiesPage />}
         {section === "loadouts" && <LoadoutsPage />}
         {section === "chase" && <ChasePage />}

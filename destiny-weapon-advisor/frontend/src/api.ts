@@ -404,3 +404,27 @@ export async function fetchChase(): Promise<ChaseRow[]> {
   }
   return (await res.json()).chase as ChaseRow[];
 }
+
+export type OutfitItem = {
+  instanceId: string; name: string; icon: string; isExotic: boolean;
+  matchedPerks?: string[]; setName?: string; focus?: number;
+  setBonuses?: { count: number; name: string; description: string }[];
+} | null;
+
+export type Outfit = {
+  className: string;
+  subclass: string;
+  statPriority: string[];
+  build: Record<string, unknown>;
+  armor: Record<string, OutfitItem>;
+  weapons: Record<string, OutfitItem>;
+};
+
+export async function fetchOutfits(): Promise<Outfit[]> {
+  const res = await apiFetch("/api/outfits");
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(data.detail || `Failed to load outfits (${res.status})`);
+  }
+  return (await res.json()).outfits as Outfit[];
+}
