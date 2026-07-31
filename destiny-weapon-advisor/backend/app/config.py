@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     cookie_secure: bool = True
 
     # Behavior
-    user_cache_ttl_seconds: int = 300
+    user_cache_ttl_seconds: int = 1800
     bungie_throttle_concurrency: int = 20
     # Score crafted weapons on the best roll they could be SHAPED into rather
     # than what is currently socketed. Off by default: turning it on changes
