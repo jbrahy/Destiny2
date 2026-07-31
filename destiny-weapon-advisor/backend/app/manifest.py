@@ -12,6 +12,8 @@ class Manifest:
     items: dict[int, dict] = field(default_factory=dict)
     stats: dict[int, dict] = field(default_factory=dict)
     plug_sets: dict[int, dict] = field(default_factory=dict)
+    item_sets: dict[int, dict] = field(default_factory=dict)
+    sandbox_perks: dict[int, dict] = field(default_factory=dict)
 
     def _def(self, item_hash: int) -> dict:
         return self.items.get(item_hash, {})
@@ -82,6 +84,19 @@ class Manifest:
         dp = self.stats.get(stat_hash, {}).get("displayProperties", {})
         return dp.get("name", "")
 
+    def set_items(self, set_hash: int) -> list[int]:
+        """Item hashes belonging to an armour set."""
+        return self.item_sets.get(set_hash, {}).get("setItems", [])
+
+    def set_perks(self, set_hash: int) -> list[dict]:
+        """[{requiredSetCount, sandboxPerkHash}] — the 2pc and 4pc bonuses."""
+        return self.item_sets.get(set_hash, {}).get("setPerks", [])
+
+    def perk_text(self, perk_hash: int) -> tuple[str, str]:
+        """(name, description) for a sandbox perk; ("", "") when unknown."""
+        dp = self.sandbox_perks.get(perk_hash, {}).get("displayProperties", {})
+        return dp.get("name", ""), dp.get("description", "")
+
 
 async def load_cached_manifest(pool) -> "Manifest | None":
     """Load the manifest from the MySQL cache only (no network). Returns None
@@ -93,10 +108,14 @@ async def load_cached_manifest(pool) -> "Manifest | None":
     # Plug sets are optional: caches written before they were downloaded still
     # load, they just yield no roll pools until the next manifest refresh.
     raw_plugs = await cache.manifest_get(pool, "manifest_plugsets")
+    raw_sets = await cache.manifest_get(pool, "manifest_item_sets")
+    raw_perks = await cache.manifest_get(pool, "manifest_sandbox_perks")
     return Manifest(
         items={int(k): v for k, v in json.loads(raw).items()},
         stats={int(k): v for k, v in json.loads(raw_stats).items()},
         plug_sets={int(k): v for k, v in json.loads(raw_plugs).items()} if raw_plugs else {},
+        item_sets={int(k): v for k, v in json.loads(raw_sets).items()} if raw_sets else {},
+        sandbox_perks={int(k): v for k, v in json.loads(raw_perks).items()} if raw_perks else {},
     )
 
 
@@ -113,13 +132,17 @@ async def load_manifest(client, pool, throttle) -> "Manifest":
         raw = await cache.manifest_get(pool, "manifest_items")
         raw_stats = await cache.manifest_get(pool, "manifest_stats")
         raw_plugs = await cache.manifest_get(pool, "manifest_plugsets")
+        raw_sets = await cache.manifest_get(pool, "manifest_item_sets")
+        raw_perks = await cache.manifest_get(pool, "manifest_sandbox_perks")
         # Re-download when plug sets are absent even at a matching version, so
         # an existing cache picks them up without waiting for a Bungie release.
-        if raw and raw_stats and raw_plugs:
+        if raw and raw_stats and raw_plugs and raw_sets and raw_perks:
             return Manifest(
                 items={int(k): v for k, v in json.loads(raw).items()},
                 stats={int(k): v for k, v in json.loads(raw_stats).items()},
                 plug_sets={int(k): v for k, v in json.loads(raw_plugs).items()},
+                item_sets={int(k): v for k, v in json.loads(raw_sets).items()},
+                sandbox_perks={int(k): v for k, v in json.loads(raw_perks).items()},
             )
 
     paths = data["jsonWorldComponentContentPaths"]["en"]
@@ -140,11 +163,25 @@ async def load_manifest(client, pool, throttle) -> "Manifest":
     )
     plug_defs.raise_for_status()
     plug_sets = plug_defs.json()
+    set_defs = await throttle.run(
+        lambda: client.get(f"{_BASE}{paths['DestinyEquipableItemSetDefinition']}", timeout=120.0)
+    )
+    set_defs.raise_for_status()
+    item_sets = set_defs.json()
+    perk_defs = await throttle.run(
+        lambda: client.get(f"{_BASE}{paths['DestinySandboxPerkDefinition']}", timeout=120.0)
+    )
+    perk_defs.raise_for_status()
+    sandbox_perks = perk_defs.json()
     await cache.manifest_set(pool, "manifest_items", json.dumps(items), version)
     await cache.manifest_set(pool, "manifest_stats", json.dumps(stats), version)
     await cache.manifest_set(pool, "manifest_plugsets", json.dumps(plug_sets), version)
+    await cache.manifest_set(pool, "manifest_item_sets", json.dumps(item_sets), version)
+    await cache.manifest_set(pool, "manifest_sandbox_perks", json.dumps(sandbox_perks), version)
     return Manifest(
         items={int(k): v for k, v in items.items()},
         stats={int(k): v for k, v in stats.items()},
         plug_sets={int(k): v for k, v in plug_sets.items()},
+        item_sets={int(k): v for k, v in item_sets.items()},
+        sandbox_perks={int(k): v for k, v in sandbox_perks.items()},
     )

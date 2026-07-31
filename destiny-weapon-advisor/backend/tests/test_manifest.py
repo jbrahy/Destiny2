@@ -112,3 +112,58 @@ def test_manifest_without_plug_sets_degrades_quietly():
     m = Manifest(items=_PLUGSET_ITEMS)
     assert m.plug_set_hashes(5001) == []
     assert m.socket_entries(100) != []
+
+
+# ---------------------------------------------------------------------------
+# Armor sets — DestinyEquipableItemSetDefinition + DestinySandboxPerkDefinition.
+# Verified shape: setItems is a list of item hashes; setPerks is a list of
+# {requiredSetCount, sandboxPerkHash}.
+# ---------------------------------------------------------------------------
+
+_ITEM_SETS = {
+    900: {
+        "displayProperties": {"name": "Techsec"},
+        "setItems": [10, 11, 12],
+        "setPerks": [
+            {"requiredSetCount": 2, "sandboxPerkHash": 7001},
+            {"requiredSetCount": 4, "sandboxPerkHash": 7002},
+        ],
+    },
+}
+_SANDBOX_PERKS = {
+    7001: {"displayProperties": {"name": "Wrecker", "description": "Bonus Kinetic damage."}},
+    7002: {"displayProperties": {"name": "Concussive Rounds", "description": "Disorienting burst."}},
+}
+
+
+def test_set_items_returns_member_hashes():
+    m = Manifest(item_sets=_ITEM_SETS)
+    assert m.set_items(900) == [10, 11, 12]
+
+
+def test_set_items_of_unknown_set_is_empty():
+    assert Manifest(item_sets=_ITEM_SETS).set_items(4242) == []
+
+
+def test_set_perks_returns_count_and_hash():
+    m = Manifest(item_sets=_ITEM_SETS)
+    assert m.set_perks(900) == [
+        {"requiredSetCount": 2, "sandboxPerkHash": 7001},
+        {"requiredSetCount": 4, "sandboxPerkHash": 7002},
+    ]
+
+
+def test_perk_text_resolves_name_and_description():
+    m = Manifest(item_sets=_ITEM_SETS, sandbox_perks=_SANDBOX_PERKS)
+    assert m.perk_text(7001) == ("Wrecker", "Bonus Kinetic damage.")
+
+
+def test_perk_text_of_unknown_perk_is_empty_strings():
+    assert Manifest().perk_text(4242) == ("", "")
+
+
+def test_manifest_without_set_tables_degrades_quietly():
+    """Caches written before these tables existed must not crash."""
+    m = Manifest()
+    assert m.set_items(900) == []
+    assert m.set_perks(900) == []
