@@ -52,3 +52,5 @@ class ArmorPiece:
     location: str
     icon: str = ""
     equipped: bool = False
+    set_name: str = ""
+    set_hash: int | None = None

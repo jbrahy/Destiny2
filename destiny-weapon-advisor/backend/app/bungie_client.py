@@ -1,5 +1,6 @@
 import httpx
 
+from app.armor_set_bonuses import build_index, set_for
 from app.config import Settings
 from app.manifest import Manifest
 from app.models import ArmorPiece, OwnedWeapon
@@ -147,6 +148,8 @@ def assemble_armor(profile: dict, manifest: Manifest) -> list[ArmorPiece]:
         cid: CLASS_TYPES.get(c.get("classType"), "Character") for cid, c in characters.items()
     }
 
+    set_index = build_index(manifest)
+
     pieces: list[ArmorPiece] = []
     for item, holder, equipped in _gather_items(profile):
         instance_id = item.get("itemInstanceId")
@@ -163,6 +166,7 @@ def assemble_armor(profile: dict, manifest: Manifest) -> list[ArmorPiece]:
             stat_name = manifest.stat_name(int(stat_hash))
             if stat_name:
                 stats[stat_name] = entry.get("value", 0)
+        piece_set = set_for(item_hash, set_index, manifest) or ("", None)
         pieces.append(
             ArmorPiece(
                 instance_id=instance_id,
@@ -177,6 +181,8 @@ def assemble_armor(profile: dict, manifest: Manifest) -> list[ArmorPiece]:
                 location="Vault" if holder == "Vault" else char_class.get(holder, "Character"),
                 icon=manifest.icon(item_hash),
                 equipped=equipped,
+                set_name=piece_set[0],
+                set_hash=piece_set[1],
             )
         )
     return pieces
