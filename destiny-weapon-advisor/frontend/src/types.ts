@@ -21,6 +21,12 @@ export interface ArmorPiece {
   location: string;
   icon: string;
   equipped: boolean;
+  verdict?: "exotic" | "top_roll" | "good" | "ok" | "dismantle";
+  focus?: number;
+  waste?: number;
+  setName?: string;
+  setHash?: number | null;
+  setBonuses?: { count: number; name: string; description: string }[];
 }
 
 export type Build = Record<string, string>;

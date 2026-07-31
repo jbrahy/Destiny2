@@ -31,15 +31,17 @@ export interface Rating {
   rank: number; // lower = better, for sorting
 }
 
-// Objective rating: exotics are always keepers; everything else is judged by its
-// total stat roll relative to your best piece in the same slot.
-function rate(a: ArmorPiece, maxInSlot: number): Rating {
-  if (a.isExotic) return { label: "Exotic", color: "#caa000", rank: 0 };
-  const pct = maxInSlot > 0 ? total(a) / maxInSlot : 0;
-  if (pct >= 0.92) return { label: "Top Roll", color: "#2e7d32", rank: 1 };
-  if (pct >= 0.8) return { label: "Good", color: "#1565c0", rank: 2 };
-  if (pct >= 0.65) return { label: "OK", color: "#f9a825", rank: 3 };
-  return { label: "Dismantle?", color: "#c62828", rank: 4 };
+const ARMOR_VERDICT: Record<string, { label: string; color: string; rank: number }> = {
+  exotic: { label: "Exotic", color: "#caa000", rank: 0 },
+  top_roll: { label: "Top Roll", color: "#2e7d32", rank: 1 },
+  good: { label: "Good", color: "#1565c0", rank: 2 },
+  ok: { label: "OK", color: "#f9a825", rank: 3 },
+  dismantle: { label: "Dismantle?", color: "#c62828", rank: 4 },
+};
+
+/** Backend verdict, with a safe fallback for DTOs cached before it existed. */
+export function ratingOf(a: ArmorPiece): Rating {
+  return ARMOR_VERDICT[a.verdict ?? ""] ?? { label: "—", color: "var(--muted)", rank: 5 };
 }
 
 // Ties break on total stats so equal-rated pieces keep a useful order.
@@ -153,12 +155,6 @@ export function ArmorList() {
     }
   }
 
-  const maxBySlot = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const a of armor) m[a.slot] = Math.max(m[a.slot] || 0, total(a));
-    return m;
-  }, [armor]);
-
   const tabs = useMemo(() => ["All", ...characters.map((c) => c.className), "Vault"], [characters]);
 
   const terms = useMemo(() => parseQuery(search), [search]);
@@ -166,14 +162,14 @@ export function ArmorList() {
   const shown = useMemo(
     () =>
       armor
-        .map((a) => ({ a, r: rate(a, maxBySlot[a.slot] || 0) }))
+        .map((a) => ({ a, r: ratingOf(a) }))
         .filter(({ a }) => location === "All" || a.location === location)
         .filter(({ a }) => slot === "all" || a.slot === slot)
         .filter(({ r }) => ratingFilter === "all" || r.label === ratingFilter)
         .filter(({ a }) => tagFilter === "all" || (tags[a.instanceId] || "") === tagFilter)
         .filter(({ a, r }) => matchArmor(a, tags[a.instanceId] || "", r.label, terms))
         .sort((x, y) => compareArmor(x, y, sort)),
-    [armor, maxBySlot, location, slot, ratingFilter, tags, tagFilter, terms, sort],
+    [armor, location, slot, ratingFilter, tags, tagFilter, terms, sort],
   );
 
   if (loading) return <div>Loading armor…</div>;
@@ -282,7 +278,7 @@ export function ArmorList() {
               )}
             </div>
           )}
-          <ArmorDetail a={selected} rating={rate(selected, maxBySlot[selected.slot] || 0)} />
+          <ArmorDetail a={selected} rating={ratingOf(selected)} />
         </div>
       )}
       <ArmorComparePanel
@@ -317,6 +313,13 @@ export function ArmorList() {
                 <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {a.name}{a.isExotic ? " ◆" : ""}
                 </strong>
+                {a.setName && (
+                  <span style={{ fontSize: 11, color: "var(--muted)" }} title={
+                    (a.setBonuses ?? []).map((b) => `${b.count}pc ${b.name}: ${b.description}`).join("\n")
+                  }>
+                    {a.setName}
+                  </span>
+                )}
                 <span style={{ display: "flex", gap: 6, alignItems: "center", whiteSpace: "nowrap" }}>
                   <button
                     onClick={(e) => { e.stopPropagation(); toggleCompare(a); }}
