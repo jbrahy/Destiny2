@@ -21,8 +21,12 @@ _SEED_PATH = Path(__file__).parent / "data" / "armor_scoring_seed.json"
 def focus(stats: dict[str, int]) -> int:
     """Sum of the top 3 stats — a piece's usable output.
 
-    Fewer than three stats simply sums what exists; negative values (Health
-    really can be -2) sort to the bottom and are excluded by the slice.
+    Fewer than three stats simply sums what exists. With 3+ stats, a negative
+    value (Health really can be -2) sorts to the bottom and is excluded by
+    the slice, as intended. With FEWER than 3 stats the slice cannot exclude
+    anything, so a negative is included and drags focus down — e.g.
+    {"Health": -2, "Melee": 5} -> focus 3, not 5. Real armour always carries
+    all 6 stats, so this regime does not occur in practice.
     """
     return sum(sorted(stats.values(), reverse=True)[:3])
 
@@ -32,9 +36,25 @@ def waste(stats: dict[str, int]) -> int:
     return sum(stats.values()) - focus(stats)
 
 
-def load_bands() -> dict[str, int]:
-    """Focus thresholds, editable in app/data/armor_scoring_seed.json."""
-    return json.loads(_SEED_PATH.read_text())["bands"]
+def load_bands(path: Path | None = None) -> dict[str, int]:
+    """Focus thresholds, editable in app/data/armor_scoring_seed.json.
+
+    Validates the loaded bands so a malformed hand-edit fails loudly here,
+    at load time, rather than silently misclassifying every piece (e.g. a
+    `good` threshold above `top_roll` makes GOOD unreachable) or raising a
+    bare KeyError deep inside score_armor for a missing key.
+    """
+    seed_path = path or _SEED_PATH
+    bands = json.loads(seed_path.read_text())["bands"]
+    required = {"top_roll", "good", "ok"}
+    missing = required - bands.keys()
+    if missing:
+        raise ValueError(f"{seed_path}: missing band key(s): {sorted(missing)}")
+    if not (bands["top_roll"] >= bands["good"] >= bands["ok"]):
+        raise ValueError(
+            f"{seed_path}: bands must satisfy top_roll >= good >= ok, got {bands}"
+        )
+    return bands
 
 
 def score_armor(piece: ArmorPiece, bands: dict[str, int]) -> ArmorVerdict:

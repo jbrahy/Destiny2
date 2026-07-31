@@ -7,7 +7,11 @@ the entire reason this module exists.
 
 Pure -- no I/O.
 """
-from app.armor_scoring import focus, score_armor, waste
+import json
+
+import pytest
+
+from app.armor_scoring import focus, load_bands, score_armor, waste
 from app.models import ArmorPiece, ArmorVerdict
 
 BANDS = {"top_roll": 80, "good": 65, "ok": 50}
@@ -31,6 +35,7 @@ def test_focus_sums_only_the_top_three_stats():
 
 def test_waste_is_everything_outside_the_top_three():
     assert waste(FOCUSED_95) == sum(FOCUSED_95.values()) - focus(FOCUSED_95)
+    assert waste(FOCUSED_95) == 18  # literal pin: catches a [:3]-removal regression
 
 
 def test_a_spread_thin_103_ranks_BELOW_a_focused_95():
@@ -78,3 +83,32 @@ def test_a_piece_with_no_stats_at_all_is_dismantle():
 
 def test_fewer_than_three_stats_sums_what_exists():
     assert focus({"Melee": 30, "Weapons": 20}) == 50
+
+
+def test_focus_with_fewer_than_three_stats_includes_negatives():
+    """Documented, not desirable: with fewer than 3 stats the slice cannot
+    exclude a negative, so it drags focus down. Real armour always carries
+    all 6 stats, so this regime does not occur in practice."""
+    assert focus({"Health": -2, "Melee": 5}) == 3
+    assert focus({"Health": -2}) == -2
+
+
+def test_load_bands_happy_path(tmp_path):
+    seed = tmp_path / "seed.json"
+    seed.write_text(json.dumps({"bands": {"top_roll": 80, "good": 65, "ok": 50}}))
+    assert load_bands(seed) == {"top_roll": 80, "good": 65, "ok": 50}
+
+
+def test_load_bands_rejects_missing_key(tmp_path):
+    seed = tmp_path / "seed.json"
+    seed.write_text(json.dumps({"bands": {"top_roll": 80, "good": 65}}))
+    with pytest.raises(ValueError, match="missing band key"):
+        load_bands(seed)
+
+
+def test_load_bands_rejects_non_descending_thresholds(tmp_path):
+    """good above top_roll would make GOOD unreachable for every piece."""
+    seed = tmp_path / "seed.json"
+    seed.write_text(json.dumps({"bands": {"top_roll": 80, "good": 90, "ok": 50}}))
+    with pytest.raises(ValueError, match="top_roll >= good >= ok"):
+        load_bands(seed)
