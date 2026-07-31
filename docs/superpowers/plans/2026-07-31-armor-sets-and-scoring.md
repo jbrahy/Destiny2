@@ -4,7 +4,7 @@
 
 **Goal:** Give armor a real backend scoring engine — an objective, distribution-aware verdict — and surface which set each piece belongs to and what its bonuses do.
 
-**Architecture:** Two new pure modules (`armor_sets.py`, `armor_scoring.py`) mirroring `dismantle.py` / `roll_pool.py`, fed by two new manifest tables. Scoring is concentration-first: `focus` = sum of the top 3 stats, because armor rolls archetype-spiky and total stats cannot distinguish a focused 95 from a spread-thin 103. The frontend `rate()` heuristic is deleted; the backend becomes the single source of truth.
+**Architecture:** Two new pure modules (`armor_set_bonuses.py`, `armor_scoring.py`) mirroring `dismantle.py` / `roll_pool.py`, fed by two new manifest tables. Scoring is concentration-first: `focus` = sum of the top 3 stats, because armor rolls archetype-spiky and total stats cannot distinguish a focused 95 from a spread-thin 103. The frontend `rate()` heuristic is deleted; the backend becomes the single source of truth.
 
 **Tech Stack:** Python 3.11 / FastAPI / aiomysql (`pytest` + `pytest-asyncio`), React + TypeScript.
 
@@ -13,7 +13,7 @@
 - Spec: `docs/superpowers/specs/2026-07-30-armor-sets-and-scoring-design.md`. Read it first.
 - **`focus` = sum of the top 3 stats.** Never total. This is the entire point of the feature.
 - **Exotics are ALWAYS a keep** — verdict `exotic`, never scored on focus. Confirmed by the user.
-- Pure modules (`armor_sets.py`, `armor_scoring.py`) import **stdlib + `app.models` only**. No I/O, no FastAPI, no httpx.
+- Pure modules (`armor_set_bonuses.py`, `armor_scoring.py`) import **stdlib + `app.models` only**. No I/O, no FastAPI, no httpx.
 - **Thresholds are never hardcoded in Python.** They live in `app/data/armor_scoring_seed.json` and are calibrated against real data in Task 6 — do not invent them earlier.
 - Real data facts, verified against the live 452-piece collection: stats are `Health, Melee, Grenade, Super, Class, Weapons`; per-stat caps ~30–40; **`Health` can be negative (-2)**; some pieces total **0**. Both edge cases need tests.
 - Backend tests run from `destiny-weapon-advisor/backend/` and need MySQL on 127.0.0.1:3307 (Docker container `destiny-mysql`).
@@ -26,7 +26,7 @@
 | File | Responsibility |
 |---|---|
 | `backend/app/manifest.py` | *(modify)* download/cache `DestinyEquipableItemSetDefinition` + `DestinySandboxPerkDefinition`; accessors |
-| `backend/app/armor_sets.py` | **new, pure** — item→set index, membership, bonuses, equipped counts |
+| `backend/app/armor_set_bonuses.py` | **new, pure** — item→set index, membership, bonuses, equipped counts |
 | `backend/app/armor_scoring.py` | **new, pure** — `focus`, `waste`, verdict |
 | `backend/app/data/armor_scoring_seed.json` | **new** — editable thresholds |
 | `backend/app/models.py` | *(modify)* `ArmorVerdict` enum; `ArmorPiece.set_name`, `set_hash` |
@@ -260,8 +260,8 @@ git commit -m "feat(manifest): download armour set and sandbox perk definitions"
 ### Task 2: Pure set-membership module
 
 **Files:**
-- Create: `backend/app/armor_sets.py`
-- Test: `backend/tests/test_armor_sets.py`
+- Create: `backend/app/armor_set_bonuses.py`
+- Test: `backend/tests/test_armor_set_bonuses.py`
 
 **Interfaces:**
 - Consumes: `Manifest.set_items`, `set_perks`, `perk_text` (Task 1).
@@ -273,7 +273,7 @@ git commit -m "feat(manifest): download armour set and sandbox perk definitions"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `backend/tests/test_armor_sets.py`:
+Create `backend/tests/test_armor_set_bonuses.py`:
 
 ```python
 """Armour set membership and bonuses.
@@ -283,7 +283,7 @@ of the shape [{requiredSetCount: 2|4, sandboxPerkHash}].
 
 Everything here is pure — no I/O — so membership is cheap to test exhaustively.
 """
-from app.armor_sets import build_index, equipped_set_counts, set_bonuses, set_for
+from app.armor_set_bonuses import build_index, equipped_set_counts, set_bonuses, set_for
 from app.manifest import Manifest
 
 _ITEM_SETS = {
@@ -370,14 +370,14 @@ def test_manifest_without_set_tables_yields_an_empty_index():
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-python -m pytest tests/test_armor_sets.py -v
+python -m pytest tests/test_armor_set_bonuses.py -v
 ```
 
-Expected: FAIL — `ModuleNotFoundError: No module named 'app.armor_sets'`.
+Expected: FAIL — `ModuleNotFoundError: No module named 'app.armor_set_bonuses'`.
 
 - [ ] **Step 3: Write the implementation**
 
-Create `backend/app/armor_sets.py`:
+Create `backend/app/armor_set_bonuses.py`:
 
 ```python
 """Armour set membership and set bonuses.
@@ -443,7 +443,7 @@ def equipped_set_counts(set_hashes: list[int | None]) -> dict[int, int]:
 - [ ] **Step 4: Run test to verify it passes**
 
 ```bash
-python -m pytest tests/test_armor_sets.py -v
+python -m pytest tests/test_armor_set_bonuses.py -v
 ```
 
 Expected: PASS, 10 tests.
@@ -451,8 +451,8 @@ Expected: PASS, 10 tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add destiny-weapon-advisor/backend/app/armor_sets.py \
-        destiny-weapon-advisor/backend/tests/test_armor_sets.py
+git add destiny-weapon-advisor/backend/app/armor_set_bonuses.py \
+        destiny-weapon-advisor/backend/tests/test_armor_set_bonuses.py
 git commit -m "feat(armor): pure set membership and bonus resolution"
 ```
 
@@ -543,7 +543,7 @@ defaults last):
 In `backend/app/bungie_client.py`, add the import:
 
 ```python
-from app.armor_sets import build_index, set_for
+from app.armor_set_bonuses import build_index, set_for
 ```
 
 In `assemble_armor`, before the `for item, holder, equipped in _gather_items(profile):` loop:
@@ -566,7 +566,7 @@ Note: build the tuple once rather than calling `set_for` twice — assign
 - [ ] **Step 5: Run tests to verify they pass**
 
 ```bash
-python -m pytest tests/test_bungie_client.py tests/test_armor_sets.py -v
+python -m pytest tests/test_bungie_client.py tests/test_armor_set_bonuses.py -v
 ```
 
 Expected: PASS, including all pre-existing tests.
@@ -899,7 +899,7 @@ In `backend/app/main.py`, add imports:
 
 ```python
 from app.armor_scoring import focus as armor_focus, load_bands, score_armor, waste as armor_waste
-from app.armor_sets import set_bonuses
+from app.armor_set_bonuses import set_bonuses
 ```
 
 `_armor_to_dict` takes the manifest and bands so it can resolve bonuses. Change its signature and
@@ -1204,7 +1204,7 @@ git commit -m "fix(cache): raise inventory TTL from 5 to 30 minutes"
 1. Per-file backend runs (never bare `pytest` — the full suite is pre-existing broken):
    ```bash
    cd destiny-weapon-advisor/backend
-   python -m pytest tests/test_armor_scoring.py tests/test_armor_sets.py \
+   python -m pytest tests/test_armor_scoring.py tests/test_armor_set_bonuses.py \
                     tests/test_manifest.py tests/test_manifest_cache.py \
                     tests/test_bungie_client.py tests/test_endpoints_armor.py -v
    ```
