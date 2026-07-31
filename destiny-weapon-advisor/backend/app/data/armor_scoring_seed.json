@@ -1,0 +1,8 @@
+{
+  "_meta": "Focus thresholds for armour verdicts. focus = sum of a piece's top 3 stats. A piece scores the highest band whose threshold it meets or exceeds. CALIBRATED against a real 452-piece collection -- see scripts/calibrate_armor_bands.py before changing.",
+  "bands": {
+    "top_roll": 999,
+    "good": 999,
+    "ok": 999
+  }
+}

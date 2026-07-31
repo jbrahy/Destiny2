@@ -10,6 +10,16 @@ class Verdict(str, Enum):
     DISMANTLE = "dismantle"
 
 
+class ArmorVerdict(str, Enum):
+    """Deliberately separate from the weapon Verdict — "god roll" and
+    "masterwork" are weapon vocabulary and would mislead here."""
+    EXOTIC = "exotic"
+    TOP_ROLL = "top_roll"
+    GOOD = "good"
+    OK = "ok"
+    DISMANTLE = "dismantle"
+
+
 @dataclass
 class OwnedWeapon:
     instance_id: str
