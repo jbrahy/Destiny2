@@ -17,6 +17,8 @@ from app.bungie_client import BungieApiError
 from app.bungie_client import set_item_lock_state
 from app.bungie_client import _LOCKED_STATE
 from app.bungie_oauth import refresh_tokens
+from app.armor_scoring import focus as armor_focus, load_bands, score_armor, waste as armor_waste
+from app.armor_set_bonuses import set_bonuses
 from app.config import get_settings
 from app import db
 from app import dismantle as dismantle_logic
@@ -228,11 +230,14 @@ async def _compute_weapons(pool, uid: int, manifest: Manifest, profile: dict) ->
     }
     await cache.set(pool, uid, "weapons_cache", json.dumps(result), settings.user_cache_ttl_seconds)
     armor = assemble_armor(profile, manifest)
-    await cache.set(pool, uid, "armor_cache", json.dumps([_armor_to_dict(a) for a in armor]), settings.user_cache_ttl_seconds)
+    bands = load_bands()
+    await cache.set(pool, uid, "armor_cache",
+                    json.dumps([_armor_to_dict(a, manifest, bands) for a in armor]),
+                    settings.user_cache_ttl_seconds)
     return result
 
 
-def _armor_to_dict(a) -> dict:
+def _armor_to_dict(a, manifest: Manifest, bands: dict[str, int]) -> dict:
     return {
         "instanceId": a.instance_id,
         "itemHash": a.item_hash,
@@ -246,6 +251,12 @@ def _armor_to_dict(a) -> dict:
         "location": a.location,
         "icon": a.icon,
         "equipped": a.equipped,
+        "setName": a.set_name,
+        "setHash": a.set_hash,
+        "setBonuses": set_bonuses(a.set_hash, manifest) if a.set_hash else [],
+        "verdict": score_armor(a, bands).value,
+        "focus": armor_focus(a.stats),
+        "waste": armor_waste(a.stats),
     }
 
 
