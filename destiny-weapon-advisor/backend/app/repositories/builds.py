@@ -14,7 +14,10 @@ async def load_builds(pool, user_id: int) -> dict:
         (user_id,),
     )
     for build_key, data in rows:
-        builds[build_key] = json.loads(data)
+        # Merge, don't replace: rows saved before a field was added to the seed
+        # would otherwise drop it forever. statPriority was added after users
+        # had already saved overrides.
+        builds[build_key] = {**builds.get(build_key, {}), **json.loads(data)}
     return builds
 
 

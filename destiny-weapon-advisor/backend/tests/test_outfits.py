@@ -183,6 +183,26 @@ def test_the_better_exotic_weapon_wins_the_allowance():
     assert out["weapons"]["Primary"]["isExotic"] is False
 
 
+def test_a_slot_whose_best_weapons_are_all_exotic_keeps_its_legendary_fallback():
+    """Regression test: ranking used to be truncated to the top 5 BEFORE the
+    solver split legendary from exotic, so a slot whose five best were all
+    exotic lost its legendary fallback and rendered empty — while the player
+    owned twenty legendaries in it."""
+    pool = [weapon("Heavy", f"ExoHeavy{i}", exotic=True, verdict="god_roll") for i in range(5)]
+    pool += [weapon("Heavy", f"LegHeavy{i}", verdict="good") for i in range(20)]
+    # A Special exotic with an even bigger gain, so the allowance goes there
+    # and Heavy is forced back onto a legendary.
+    pool += [
+        weapon("Special", "ExoSpecial", exotic=True, verdict="god_roll"),
+        weapon("Special", "LegSpecial", verdict="no_data"),
+    ]
+    out = build_outfit("Warlock", "Solar", pool, [], BUILD)
+
+    assert out["weapons"]["Special"]["isExotic"] is True
+    assert out["weapons"]["Heavy"] is not None, "owned 20 legendary heavies, wore none"
+    assert out["weapons"]["Heavy"]["isExotic"] is False
+
+
 def test_every_armor_slot_key_is_present_even_when_unfilled():
     out = build_outfit("Warlock", "Solar", [], [], BUILD)
     assert set(out["armor"]) == set(ARMOR_SLOTS)

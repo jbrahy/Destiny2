@@ -69,7 +69,7 @@ async def test_perk_ratings_empty_tags(two_users):
 # ---------------------------------------------------------------------------
 
 async def test_builds_isolation(two_users):
-    """save_build for A replaces seed key for A only; B still sees seed."""
+    """save_build for A overrides the seed key for A only; B still sees seed."""
     pool, uid_a, uid_b = two_users
 
     # Get the first seed build key
@@ -84,8 +84,28 @@ async def test_builds_isolation(two_users):
     builds_a = await builds_repo.load_builds(pool, uid_a)
     builds_b = await builds_repo.load_builds(pool, uid_b)
 
-    assert builds_a[first_key] == custom_data
+    assert builds_a[first_key] == {**original_data, **custom_data}
     assert builds_b[first_key] == original_data
+
+
+async def test_a_saved_build_keeps_seed_fields_it_never_knew_about(two_users):
+    """Overrides saved before a field was added to the seed must not drop it.
+
+    statPriority landed after users had already saved builds; a wholesale
+    replace silently degraded their outfits to subclass-blind armour picks
+    forever, with nothing to signal it.
+    """
+    pool, uid_a, _ = two_users
+
+    from app.builds import _seed_builds
+    key = next(iter(_seed_builds()))
+
+    legacy_row = {"description": "saved before statPriority existed"}
+    await builds_repo.save_build(pool, uid_a, key, legacy_row)
+
+    build = (await builds_repo.load_builds(pool, uid_a))[key]
+    assert build["description"] == legacy_row["description"]
+    assert build["statPriority"], "seed statPriority was dropped by the override"
 
 
 async def test_builds_new_key_for_a(two_users):

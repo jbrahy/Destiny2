@@ -93,9 +93,10 @@ export function OutfitsPage() {
     <div>
       <h1 style={{ marginTop: 0 }}>Outfits</h1>
       <p style={{ color: "var(--muted)", maxWidth: 720 }}>
-        A complete, equippable loadout for every class and subclass you have a build for —
-        the best armor and weapons you own, spending at most one exotic armor piece and one
-        exotic weapon per outfit, the same limit Destiny enforces on your character.
+        The best loadout you can field for every class and subclass you have a build for,
+        from armor and weapons you already own. Each outfit spends at most one exotic armor
+        piece and one exotic weapon — the same limit Destiny enforces on your character.
+        A slot you own nothing for is left empty rather than filled with a guess.
       </p>
 
       <button onClick={load} disabled={loading} style={{ marginBottom: 16 }}>

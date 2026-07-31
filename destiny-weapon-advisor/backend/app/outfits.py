@@ -93,7 +93,12 @@ def build_outfit(
     chosen_armor = pick_with_one_exotic(armor_by_slot, _armor_score(priority))
 
     element = element_for_subclass(subclass)
-    ranked = recommend_weapons(weapons, {"label": subclass, "element": element}, top_n=5)
+    # No truncation: a top-5 cut runs BEFORE the solver splits legendary from
+    # exotic, so a slot whose five best are all exotic would lose its legendary
+    # fallback and render empty even though the player owns twenty of them.
+    ranked = recommend_weapons(
+        weapons, {"label": subclass, "element": element}, top_n=len(weapons) or 1,
+    )
     weapons_by_slot = {slot: ranked["slots"].get(slot, []) for slot in AMMO_SLOTS}
     chosen_weapons = pick_with_one_exotic(weapons_by_slot, _weapon_score(element))
 
