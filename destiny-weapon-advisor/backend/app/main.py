@@ -29,6 +29,7 @@ from app.perk_ratings import TIER_SCORE
 from app.perk_scoring import score_by_perks
 from app.recommend import element_for_subclass, recommend_weapons
 from app.loadout_builder import build_loadout
+from app.outfits import build_all_outfits
 from scripts.migrate import apply_migrations
 from app.auth import router as auth_router, get_current_user, require_csrf
 from app.ads import router as ads_router
@@ -437,6 +438,26 @@ async def get_chase(
     weapons = assemble_weapons(profile, manifest)
     ratings = await perk_ratings_repo.load(pool, uid)
     return {"chase": chase_candidates(weapons, manifest, ratings)}
+
+
+@app.get("/api/outfits")
+async def get_outfits(
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> dict:
+    """One complete outfit per class/subclass, from cached inventory.
+
+    Read-only: no Bungie calls, nothing is equipped or modified.
+    """
+    uid = current_user["user_id"]
+    weapons_raw = await cache.get(pool, uid, "weapons_cache")
+    armor_raw = await cache.get(pool, uid, "armor_cache")
+    if not weapons_raw or not armor_raw:
+        raise HTTPException(status_code=400, detail="Load your inventory first.")
+    weapons = json.loads(weapons_raw).get("weapons", [])
+    armor = json.loads(armor_raw)
+    builds = await builds_repo.load_builds(pool, uid)
+    return {"outfits": build_all_outfits(builds, weapons, armor)}
 
 
 @app.get("/api/tags")
