@@ -71,7 +71,14 @@ function ArmorDetail({ a, rating }: { a: ArmorPiece; rating: Rating }) {
       <p style={{ margin: "0 0 4px" }}>
         <strong>Rating:</strong>{" "}
         <span style={{ color: rating.color, fontWeight: 600 }}>{rating.label}</span>{" "}
-        <span style={{ color: "var(--muted)", fontSize: 12 }}>(by total stats vs your best in this slot)</span>
+        {/* Armour rolls spiky — two or three stats high, the rest at 5-6 — so the
+            top 3 are what the piece actually gives you. Judged against fixed
+            thresholds, not against your own best, so it never drifts. */}
+        <span style={{ color: "var(--muted)", fontSize: 12 }}>
+          {a.focus !== undefined
+            ? `focus ${a.focus} — its best 3 stats${a.waste ? `, ${a.waste} spent elsewhere` : ""}`
+            : "by its best 3 stats"}
+        </span>
       </p>
       <h3 style={{ margin: "8px 0 6px" }}>Stats (total {total(a)})</h3>
       {Object.entries(a.stats).map(([name, value]) => (
