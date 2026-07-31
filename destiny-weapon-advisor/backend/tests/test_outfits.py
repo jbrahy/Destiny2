@@ -117,6 +117,29 @@ def test_armor_is_class_locked():
     assert out["armor"]["Helmet"]["className"] == "Warlock"
 
 
+def test_build_outfit_survives_exotic_armor():
+    """Regression test: `_armor_score` must return a single number, not a
+    tuple — `pick_with_one_exotic` subtracts scores, and every real Destiny
+    account owns exotic armor, so this path runs on every real call."""
+    pool = [
+        armor("Helmet", exotic=True, Grenade=40), armor("Helmet", Grenade=10),
+        armor("Gauntlets", exotic=True, Grenade=30), armor("Gauntlets", Grenade=20),
+    ]
+    out = build_outfit("Warlock", "Solar", [], pool, BUILD)
+    exotics = [a for a in out["armor"].values() if a and a["isExotic"]]
+    assert len(exotics) == 1
+    assert out["armor"]["Helmet"]["isExotic"] is True
+    assert out["armor"]["Gauntlets"]["isExotic"] is False
+
+
+def test_build_outfit_fills_an_exotic_only_slot():
+    """A slot whose only owned piece is exotic must not raise and must be worn."""
+    pool = [armor("Helmet", exotic=True, Grenade=30), armor("Gauntlets", Grenade=20)]
+    out = build_outfit("Warlock", "Solar", [], pool, BUILD)
+    assert out["armor"]["Helmet"]["isExotic"] is True
+    assert out["armor"]["Gauntlets"]["isExotic"] is False
+
+
 def test_stat_priority_beats_raw_focus():
     """A piece stacked into the build's priority stats wins over a higher-focus
     piece that dumps its points elsewhere."""
@@ -127,15 +150,37 @@ def test_stat_priority_beats_raw_focus():
 
 
 def test_only_one_exotic_weapon():
+    """Primary's exotic gains 2 tiers over its legendary (good -> god_roll);
+    Special's exotic gains only 1 (good -> masterwork). Only the bigger real
+    gain should spend the single exotic allowance."""
     pool = [
-        weapon("Primary", "ExoPrimary", exotic=True),
-        weapon("Special", "ExoSpecial", exotic=True),
-        weapon("Primary", "LegPrimary"),
-        weapon("Special", "LegSpecial"),
+        weapon("Primary", "ExoPrimary", exotic=True, verdict="god_roll"),
+        weapon("Special", "ExoSpecial", exotic=True, verdict="masterwork"),
+        weapon("Primary", "LegPrimary", verdict="good"),
+        weapon("Special", "LegSpecial", verdict="good"),
     ]
     out = build_outfit("Warlock", "Solar", pool, [], BUILD)
     exotics = [w for w in out["weapons"].values() if w and w["isExotic"]]
-    assert len(exotics) <= 1
+    assert len(exotics) == 1
+    assert exotics[0]["name"] == "ExoPrimary"
+
+
+def test_the_better_exotic_weapon_wins_the_allowance():
+    """Regression test for the ordinal-rank bug: a per-slot list position is
+    not comparable across slots, so a marginal exotic that merely ties its
+    slot's legendary (and wins only a name tiebreak) must NOT beat a
+    god-roll exotic with matched perks in a different slot."""
+    exo_primary = weapon("Primary", "ExoPrimary", exotic=True)          # marginal: ties LegPrimary
+    leg_primary = weapon("Primary", "LegPrimary")
+    exo_heavy = weapon("Heavy", "ExoHeavy", exotic=True, verdict="god_roll")
+    exo_heavy["matchedPerks"] = ["p1", "p2", "p3"]
+    leg_heavy = weapon("Heavy", "LegHeavy", verdict="no_data")
+    pool = [exo_primary, leg_primary, exo_heavy, leg_heavy]
+
+    out = build_outfit("Warlock", "Solar", pool, [], BUILD)
+
+    assert out["weapons"]["Heavy"]["instanceId"] == exo_heavy["instanceId"]
+    assert out["weapons"]["Primary"]["isExotic"] is False
 
 
 def test_every_armor_slot_key_is_present_even_when_unfilled():
