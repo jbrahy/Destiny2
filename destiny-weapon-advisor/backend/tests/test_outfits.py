@@ -95,6 +95,18 @@ def test_an_empty_slot_yields_none_not_a_fabricated_pick():
     assert chosen["Helmet"] is None
 
 
+def test_an_exotic_worse_than_the_best_legendary_is_never_worn():
+    """No forced exotic swap when every exotic loses to the best legendary —
+    the single allowance is spent only when it is a genuine upgrade."""
+    by_slot = {
+        "Helmet": [armor("Helmet", exotic=True, Grenade=5), armor("Helmet", Grenade=30)],
+        "Gauntlets": [armor("Gauntlets", Grenade=20)],
+    }
+    chosen = pick_with_one_exotic(by_slot, lambda a: a["stats"]["Grenade"])
+    assert chosen["Helmet"]["isExotic"] is False
+    assert chosen["Gauntlets"]["isExotic"] is False
+
+
 # ---------------------------------------------------------------------------
 # Outfit assembly
 # ---------------------------------------------------------------------------
