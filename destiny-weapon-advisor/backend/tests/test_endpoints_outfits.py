@@ -161,3 +161,73 @@ async def test_dry_run_reports_a_piece_worn_by_another_character_as_blocked(
 
     assert r.status_code == 200
     assert r.json()["plan"][0]["action"] == "blocked"
+
+
+# ---------------------------------------------------------------------------
+# Stat focus
+# ---------------------------------------------------------------------------
+
+async def test_outfits_rejects_an_unknown_focus_stat(app_client, clean_db, monkeypatch):
+    uid = await login_user(app_client, monkeypatch, bungie_id="bm-focus-bad")
+    await _seed(clean_db, uid)
+    r = await app_client.get("/api/outfits?focus=Grenade,Nonsense")
+    assert r.status_code == 400
+    assert "Nonsense" in r.json()["detail"]
+
+
+async def test_outfits_rejects_more_than_three_focus_stats(app_client, clean_db, monkeypatch):
+    uid = await login_user(app_client, monkeypatch, bungie_id="bm-focus-many")
+    await _seed(clean_db, uid)
+    r = await app_client.get("/api/outfits?focus=Health,Melee,Grenade,Super")
+    assert r.status_code == 400
+
+
+async def test_focus_replaces_the_seeded_priority_on_every_outfit(app_client, clean_db, monkeypatch):
+    uid = await login_user(app_client, monkeypatch, bungie_id="bm-focus-ok")
+    await _seed(clean_db, uid)
+    r = await app_client.get("/api/outfits?focus=Super,Health")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["focus"] == ["Super", "Health"]
+    assert all(o["statPriority"] == ["Super", "Health"] for o in body["outfits"])
+
+
+async def test_apply_rebuilds_with_the_focus_it_was_given(app_client, clean_db, monkeypatch):
+    """The preview must describe the outfit the page is showing.
+
+    Two Helmets: one wins on Grenade (the seeded priority), the other on Super.
+    Applying with focus=Super must plan the Super piece, not the seeded one.
+    """
+    uid = await login_user(app_client, monkeypatch, bungie_id="bm-focus-apply")
+    seeded = dict(_ARMOR[0], instanceId="helm-grenade",
+                  stats={"Health": 0, "Melee": 0, "Grenade": 40,
+                         "Super": 0, "Class": 0, "Weapons": 0})
+    focused = dict(_ARMOR[0], instanceId="helm-super",
+                   stats={"Health": 0, "Melee": 0, "Grenade": 0,
+                          "Super": 40, "Class": 0, "Weapons": 0})
+    profile = json.loads(json.dumps(_PROFILE))
+    profile["profileInventory"]["data"]["items"] = [
+        {"itemInstanceId": "helm-grenade", "itemHash": 500, "state": 0},
+        {"itemInstanceId": "helm-super", "itemHash": 500, "state": 0},
+    ]
+    await cache_repo.set(clean_db, uid, "profile_cache", json.dumps(profile), 3600)
+    await cache_repo.set(clean_db, uid, "weapons_cache", json.dumps({"weapons": []}), 3600)
+    await cache_repo.set(clean_db, uid, "armor_cache", json.dumps([seeded, focused]), 3600)
+
+    r = await app_client.post("/api/outfits/apply", json={
+        "className": "Warlock", "subclass": "Solar", "characterId": _CHAR,
+        "dryRun": True, "focus": ["Super"],
+    }, headers=_csrf(app_client))
+
+    assert r.status_code == 200
+    assert [p["instanceId"] for p in r.json()["plan"]] == ["helm-super"]
+
+
+async def test_apply_rejects_an_unknown_focus_stat(app_client, clean_db, monkeypatch):
+    uid = await login_user(app_client, monkeypatch, bungie_id="bm-focus-apply-bad")
+    await _seed(clean_db, uid)
+    r = await app_client.post("/api/outfits/apply", json={
+        "className": "Warlock", "subclass": "Solar", "characterId": _CHAR,
+        "dryRun": True, "focus": ["Nonsense"],
+    }, headers=_csrf(app_client))
+    assert r.status_code == 400

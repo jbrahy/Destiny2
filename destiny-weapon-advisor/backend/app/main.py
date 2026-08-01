@@ -29,7 +29,7 @@ from app.perk_ratings import TIER_SCORE
 from app.perk_scoring import score_by_perks
 from app.recommend import element_for_subclass, recommend_weapons
 from app.loadout_builder import build_loadout
-from app.outfits import build_all_outfits, plan_apply
+from app.outfits import build_all_outfits, parse_focus, plan_apply
 from scripts.migrate import apply_migrations
 from app.auth import router as auth_router, get_current_user, require_csrf
 from app.ads import router as ads_router
@@ -141,6 +141,9 @@ class ApplyOutfitBody(BaseModel):
     subclass: str
     characterId: str
     dryRun: bool = True
+    # The focus is part of the outfit's identity: rebuilding without it would
+    # preview and equip a different set of items than the page is showing.
+    focus: list[str] = []
 
 
 class ArmorSetBody(BaseModel):
@@ -447,7 +450,16 @@ async def get_chase(
     return {"chase": chase_candidates(weapons, manifest, ratings)}
 
 
-async def _outfits_or_400(pool, uid: int) -> list[dict]:
+def _focus_or_400(raw) -> list[str]:
+    """Validate a stat focus the same way for both outfit endpoints, so the
+    page and the equip preview can never disagree about what is valid."""
+    try:
+        return parse_focus(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+async def _outfits_or_400(pool, uid: int, focus: list[str]) -> list[dict]:
     """Rebuild every outfit from the cached inventory, or 400 if there is none."""
     weapons_raw = await cache.get(pool, uid, "weapons_cache")
     armor_raw = await cache.get(pool, uid, "armor_cache")
@@ -456,19 +468,27 @@ async def _outfits_or_400(pool, uid: int) -> list[dict]:
     weapons = json.loads(weapons_raw).get("weapons", [])
     armor = json.loads(armor_raw)
     builds = await builds_repo.load_builds(pool, uid)
-    return build_all_outfits(builds, weapons, armor)
+    return build_all_outfits(builds, weapons, armor, focus)
 
 
 @app.get("/api/outfits")
 async def get_outfits(
+    focus: str | None = None,
     current_user: dict = Depends(get_current_user),
     pool=Depends(get_pool),
 ) -> dict:
     """One complete outfit per class/subclass, from cached inventory.
 
+    `focus` is a comma-separated list of up to 3 armour stats which, when
+    given, replaces every build's seeded priority.
+
     Read-only: no Bungie calls, nothing is equipped or modified.
     """
-    return {"outfits": await _outfits_or_400(pool, current_user["user_id"])}
+    picked = _focus_or_400(focus)
+    return {
+        "outfits": await _outfits_or_400(pool, current_user["user_id"], picked),
+        "focus": picked,
+    }
 
 
 @app.post("/api/outfits/apply")
@@ -491,7 +511,7 @@ async def apply_outfit(
     what fills the confirm dialog.
     """
     uid = current_user["user_id"]
-    outfits = await _outfits_or_400(pool, uid)
+    outfits = await _outfits_or_400(pool, uid, _focus_or_400(body.focus))
     outfit = next(
         (o for o in outfits
          if o["className"] == body.className and o["subclass"] == body.subclass),

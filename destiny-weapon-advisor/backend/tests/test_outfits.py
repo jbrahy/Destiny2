@@ -7,7 +7,8 @@ piece in two slots is exotic, producing an outfit the player cannot equip.
 Pure — no I/O.
 """
 from app.outfits import (
-    AMMO_SLOTS, ARMOR_SLOTS, build_all_outfits, build_outfit, pick_with_one_exotic, plan_apply,
+    AMMO_SLOTS, ARMOR_SLOTS, build_all_outfits, build_outfit, parse_focus, pick_with_one_exotic,
+    plan_apply,
 )
 
 
@@ -307,3 +308,74 @@ def test_plan_apply_carries_the_name_for_display():
     plan = plan_apply(outfit, "char-a", lambda iid: "vault")
     assert plan[0]["name"] == "Helmet piece"
     assert plan[0]["itemHash"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Stat focus — the user's chosen stats override each build's seeded priority
+# ---------------------------------------------------------------------------
+
+def test_parse_focus_accepts_one_to_three_stats():
+    assert parse_focus("Grenade") == ["Grenade"]
+    assert parse_focus("Grenade,Super") == ["Grenade", "Super"]
+    assert parse_focus(["Grenade", "Super", "Health"]) == ["Grenade", "Super", "Health"]
+
+
+def test_parse_focus_treats_empty_as_no_focus():
+    """Absent focus is the seeded fallback, not an error."""
+    assert parse_focus(None) == []
+    assert parse_focus("") == []
+    assert parse_focus([]) == []
+    assert parse_focus(" , ") == []
+
+
+def test_parse_focus_collapses_duplicates_keeping_order():
+    assert parse_focus("Super,Grenade,Super") == ["Super", "Grenade"]
+
+
+def test_parse_focus_names_the_stat_it_rejected():
+    """A silent drop would let a typo quietly change which armour you get."""
+    try:
+        parse_focus("Grenade,Nonsense")
+    except ValueError as exc:
+        assert "Nonsense" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_parse_focus_rejects_more_than_three():
+    try:
+        parse_focus("Health,Melee,Grenade,Super")
+    except ValueError as exc:
+        assert "3" in str(exc)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_focus_overrides_the_seeded_priority_in_the_actual_pick():
+    """Not just the reported field — the chosen piece must change."""
+    seeded_pick = armor("Helmet", Grenade=40)
+    focused_pick = armor("Helmet", Super=40)
+    build = {"statPriority": ["Grenade"]}
+
+    without = build_outfit("Warlock", "Solar", [], [seeded_pick, focused_pick], build)
+    assert without["armor"]["Helmet"]["instanceId"] == seeded_pick["instanceId"]
+
+    with_focus = build_outfit(
+        "Warlock", "Solar", [], [seeded_pick, focused_pick], build, focus=["Super"],
+    )
+    assert with_focus["armor"]["Helmet"]["instanceId"] == focused_pick["instanceId"]
+
+
+def test_the_outfit_reports_the_priority_actually_used():
+    """The card's 'prioritising ...' subtitle must not lie about which it used."""
+    build = {"statPriority": ["Grenade"]}
+    assert build_outfit("Warlock", "Solar", [], [], build)["statPriority"] == ["Grenade"]
+    focused = build_outfit("Warlock", "Solar", [], [], build, focus=["Super", "Health"])
+    assert focused["statPriority"] == ["Super", "Health"]
+
+
+def test_build_all_outfits_applies_one_focus_to_every_build():
+    builds = {"Warlock|Solar": {"statPriority": ["Grenade"]},
+              "Titan|Arc": {"statPriority": ["Melee"]}}
+    outfits = build_all_outfits(builds, [], [], focus=["Super"])
+    assert all(o["statPriority"] == ["Super"] for o in outfits)

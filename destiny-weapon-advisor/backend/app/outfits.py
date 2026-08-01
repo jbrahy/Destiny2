@@ -11,6 +11,35 @@ from app.recommend import _VERDICT_TIER, element_for_subclass, recommend_weapons
 
 ARMOR_SLOTS = ("Helmet", "Gauntlets", "Chest Armor", "Leg Armor", "Class Item")
 AMMO_SLOTS = ("Primary", "Special", "Heavy")
+ARMOR_STATS = ("Health", "Melee", "Grenade", "Super", "Class", "Weapons")
+MAX_FOCUS = 3
+
+
+def parse_focus(raw) -> list[str]:
+    """Validate a chosen stat focus: 0-3 armour stats, duplicates collapsed.
+
+    Accepts a comma-separated string (query param) or a list (JSON body).
+    Empty means "no focus" — the seeded per-build priority applies — which is a
+    fallback, not an error. An unknown name raises rather than being dropped:
+    a silent drop would quietly change which armour you get off a typo.
+    """
+    if raw is None:
+        return []
+    names = raw.split(",") if isinstance(raw, str) else list(raw)
+    picked: list[str] = []
+    for name in names:
+        name = name.strip()
+        if not name:
+            continue
+        if name not in ARMOR_STATS:
+            raise ValueError(
+                f"{name!r} is not an armour stat. Choose from: {', '.join(ARMOR_STATS)}."
+            )
+        if name not in picked:
+            picked.append(name)
+    if len(picked) > MAX_FOCUS:
+        raise ValueError(f"Choose at most {MAX_FOCUS} stats to focus on.")
+    return picked
 
 
 def pick_with_one_exotic(by_slot: dict[str, list[dict]], score) -> dict[str, dict | None]:
@@ -82,10 +111,17 @@ def _weapon_score(element: str | None):
 
 def build_outfit(
     class_name: str, subclass: str, weapons: list[dict], armor: list[dict], build: dict,
+    focus: list[str] | None = None,
 ) -> dict:
     """One complete outfit: 5 armour slots + 3 ammo slots, each obeying the
-    one-exotic rule. Slots with nothing owned are None rather than invented."""
-    priority = build.get("statPriority", [])
+    one-exotic rule. Slots with nothing owned are None rather than invented.
+
+    `focus` is the stats the player asked for. It replaces the build's seeded
+    priority outright — which means every subclass of a class gets the same
+    armour, because armour is class-locked, not subclass-locked. Weapons still
+    vary by subclass, since those key off the damage element.
+    """
+    priority = focus or build.get("statPriority", [])
 
     # Armour is class-locked: Warlock gear never appears in a Titan outfit.
     mine = [a for a in armor if a.get("className") == class_name]
@@ -152,10 +188,12 @@ def plan_apply(outfit: dict, target: str, locate) -> list[dict]:
     return plan
 
 
-def build_all_outfits(builds: dict, weapons: list[dict], armor: list[dict]) -> list[dict]:
+def build_all_outfits(
+    builds: dict, weapons: list[dict], armor: list[dict], focus: list[str] | None = None,
+) -> list[dict]:
     """One outfit per seeded "Class|Subclass" build, in sorted key order."""
     outfits = []
     for key in sorted(k for k in builds if not k.startswith("_")):
         class_name, _, subclass = key.partition("|")
-        outfits.append(build_outfit(class_name, subclass, weapons, armor, builds[key]))
+        outfits.append(build_outfit(class_name, subclass, weapons, armor, builds[key], focus))
     return outfits
