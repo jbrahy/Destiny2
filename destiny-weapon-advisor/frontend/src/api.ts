@@ -428,3 +428,31 @@ export async function fetchOutfits(): Promise<Outfit[]> {
   }
   return (await res.json()).outfits as Outfit[];
 }
+
+/** What equipping an outfit would do to one item. "blocked" is expected, not
+ *  exceptional — gear worn by your other character of the same class cannot be
+ *  stripped remotely. */
+export type OutfitPlanStep = {
+  slot: string;
+  instanceId: string;
+  itemHash: number;
+  name: string;
+  isExotic: boolean;
+  action: "move" | "skip" | "blocked";
+  reason: string;
+};
+
+export async function applyOutfit(
+  className: string, subclass: string, characterId: string, dryRun: boolean,
+): Promise<{ plan: OutfitPlanStep[]; results: MoveResult[] }> {
+  const res = await apiFetch("/api/outfits/apply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ className, subclass, characterId, dryRun }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(data.detail || `Equip failed (${res.status})`);
+  }
+  return await res.json();
+}
