@@ -1285,10 +1285,13 @@ async def _apply_item_set(pool, uid: int, settings, request: Request, items: lis
                 await _move_one(client, settings, access, mtype, profile, it["instanceId"],
                                 it["itemHash"], target, True, throttle=throttle)
                 results.append({"instanceId": it["instanceId"], "ok": True})
-            # RequestError is a SIBLING of HTTPStatusError, not a subclass — a
-            # network blip used to escape as a 500, discarding the per-item
-            # results for everything after it.
-            except (BungieApiError, httpx.HTTPStatusError, httpx.RequestError) as exc:
+            # Per-item isolation is the entire point of this loop: one item
+            # failing must not discard the results for the seven that already
+            # moved. A narrow tuple kept letting siblings through —
+            # httpx.RequestError is NOT a subclass of HTTPStatusError — and
+            # each escape turned a partial success into a 500 with no record
+            # of what had already been done to the player's gear.
+            except Exception as exc:  # noqa: BLE001 — see above
                 results.append({"instanceId": it["instanceId"], "ok": False, "error": str(exc)})
         fresh = await throttle.run(lambda: get_profile(mtype, mid, access, settings, client))
     await _save_profile(pool, uid, fresh, mid)

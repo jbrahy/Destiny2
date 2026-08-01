@@ -133,19 +133,22 @@ function OutfitCard({ outfit, characters }: { outfit: Outfit; characters: Charac
 
   const characterId = target || mine[0]?.id || "";
 
-  function preview() {
-    setBusy(true); setError(""); setResults(null);
-    applyOutfit(outfit.className, outfit.subclass, characterId, true)
-      .then((r) => setPlan(r.plan))
-      .catch((e) => setError(String(e)))
-      .finally(() => setBusy(false));
-  }
-
-  function equip() {
+  // Every response is checked against the character it was requested for. A
+  // plan computed for one character must never be confirmed against another —
+  // the user would review "5 blocked" for Warlock A and land all 8 on Warlock B.
+  function run(dryRun: boolean) {
+    const requestedFor = characterId;
     setBusy(true); setError("");
-    applyOutfit(outfit.className, outfit.subclass, characterId, false)
-      .then((r) => { setResults(r.results); setPlan(r.plan); })
-      .catch((e) => setError(String(e)))
+    // The wet run keeps the plan on screen so the confirm panel can show
+    // "Equipping…" rather than vanishing mid-request.
+    if (dryRun) { setPlan(null); setResults(null); }
+    applyOutfit(outfit.className, outfit.subclass, requestedFor, dryRun)
+      .then((r) => {
+        if (requestedFor !== characterId) return;   // picker moved — discard
+        setPlan(r.plan);
+        if (!dryRun) setResults(r.results);
+      })
+      .catch((e) => { if (requestedFor === characterId) setError(String(e)); })
       .finally(() => setBusy(false));
   }
 
@@ -187,6 +190,7 @@ function OutfitCard({ outfit, characters }: { outfit: Outfit; characters: Charac
               that appears only sometimes is one you stop reading. */}
           <select
             value={characterId}
+            disabled={busy}
             onChange={(e) => { setTarget(e.target.value); setPlan(null); setResults(null); }}
             style={{ fontSize: 12, maxWidth: 180 }}
             aria-label={`Character to equip this ${outfit.className} outfit on`}
@@ -197,7 +201,7 @@ function OutfitCard({ outfit, characters }: { outfit: Outfit; characters: Charac
               </option>
             ))}
           </select>
-          <button onClick={preview} disabled={busy || !characterId}>
+          <button onClick={() => run(true)} disabled={busy || !characterId}>
             {busy && !plan ? "Checking…" : "Equip"}
           </button>
         </div>
@@ -210,7 +214,7 @@ function OutfitCard({ outfit, characters }: { outfit: Outfit; characters: Charac
           plan={plan}
           busy={busy}
           onCancel={() => setPlan(null)}
-          onConfirm={equip}
+          onConfirm={() => run(false)}
         />
       )}
       {results && plan && <ResultsPanel plan={plan} results={results} />}
