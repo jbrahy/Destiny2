@@ -29,7 +29,7 @@ from app.perk_ratings import TIER_SCORE
 from app.perk_scoring import score_by_perks
 from app.recommend import element_for_subclass, recommend_weapons
 from app.loadout_builder import build_loadout
-from app.outfits import build_all_outfits
+from app.outfits import build_all_outfits, plan_apply
 from scripts.migrate import apply_migrations
 from app.auth import router as auth_router, get_current_user, require_csrf
 from app.ads import router as ads_router
@@ -134,6 +134,13 @@ class LoadoutBody(BaseModel):
 
 class ApplyLoadoutBody(BaseModel):
     name: str
+
+
+class ApplyOutfitBody(BaseModel):
+    className: str
+    subclass: str
+    characterId: str
+    dryRun: bool = True
 
 
 class ArmorSetBody(BaseModel):
@@ -440,6 +447,18 @@ async def get_chase(
     return {"chase": chase_candidates(weapons, manifest, ratings)}
 
 
+async def _outfits_or_400(pool, uid: int) -> list[dict]:
+    """Rebuild every outfit from the cached inventory, or 400 if there is none."""
+    weapons_raw = await cache.get(pool, uid, "weapons_cache")
+    armor_raw = await cache.get(pool, uid, "armor_cache")
+    if not weapons_raw or not armor_raw:
+        raise HTTPException(status_code=400, detail="Load your inventory first.")
+    weapons = json.loads(weapons_raw).get("weapons", [])
+    armor = json.loads(armor_raw)
+    builds = await builds_repo.load_builds(pool, uid)
+    return build_all_outfits(builds, weapons, armor)
+
+
 @app.get("/api/outfits")
 async def get_outfits(
     current_user: dict = Depends(get_current_user),
@@ -449,15 +468,60 @@ async def get_outfits(
 
     Read-only: no Bungie calls, nothing is equipped or modified.
     """
+    return {"outfits": await _outfits_or_400(pool, current_user["user_id"])}
+
+
+@app.post("/api/outfits/apply")
+async def apply_outfit(
+    request: Request,
+    body: ApplyOutfitBody,
+    current_user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+    _csrf=Depends(require_csrf),
+) -> dict:
+    """Transfer and equip a whole outfit onto one of your characters.
+
+    The outfit is rebuilt server-side from the caller's own cached inventory —
+    the client sends only which outfit it wants. Accepting a caller-supplied
+    list of instance ids would make this a general "equip anything" primitive,
+    which is a much larger thing to secure than "equip the outfit you already
+    computed".
+
+    dryRun (the default) classifies every item without touching Bungie, and is
+    what fills the confirm dialog.
+    """
     uid = current_user["user_id"]
-    weapons_raw = await cache.get(pool, uid, "weapons_cache")
-    armor_raw = await cache.get(pool, uid, "armor_cache")
-    if not weapons_raw or not armor_raw:
-        raise HTTPException(status_code=400, detail="Load your inventory first.")
-    weapons = json.loads(weapons_raw).get("weapons", [])
-    armor = json.loads(armor_raw)
-    builds = await builds_repo.load_builds(pool, uid)
-    return {"outfits": build_all_outfits(builds, weapons, armor)}
+    outfits = await _outfits_or_400(pool, uid)
+    outfit = next(
+        (o for o in outfits
+         if o["className"] == body.className and o["subclass"] == body.subclass),
+        None,
+    )
+    if outfit is None:
+        raise HTTPException(status_code=404, detail="No outfit for that class and subclass.")
+
+    profile = await _load_profile_or_400(pool, uid)
+    chars = profile.get("characters", {}).get("data", {})
+    char = chars.get(body.characterId)
+    if char is None:
+        raise HTTPException(status_code=400, detail="That character is not on your account.")
+    char_class = CLASS_TYPES.get(char.get("classType"), "Character")
+    if char_class != body.className:
+        raise HTTPException(
+            status_code=400,
+            detail=f"That is a {char_class}; this outfit is for a {body.className}.",
+        )
+
+    plan = plan_apply(outfit, body.characterId,
+                      lambda iid: _find_item_location(profile, iid))
+    if body.dryRun:
+        return {"plan": plan, "results": []}
+
+    movable = [p for p in plan if p["action"] == "move"]
+    results = await _apply_item_set(
+        pool, uid, get_settings(), request, movable, body.characterId,
+    )
+    return {"plan": plan, "results": results}
 
 
 @app.get("/api/tags")
@@ -1221,7 +1285,10 @@ async def _apply_item_set(pool, uid: int, settings, request: Request, items: lis
                 await _move_one(client, settings, access, mtype, profile, it["instanceId"],
                                 it["itemHash"], target, True, throttle=throttle)
                 results.append({"instanceId": it["instanceId"], "ok": True})
-            except (BungieApiError, httpx.HTTPStatusError) as exc:
+            # RequestError is a SIBLING of HTTPStatusError, not a subclass — a
+            # network blip used to escape as a 500, discarding the per-item
+            # results for everything after it.
+            except (BungieApiError, httpx.HTTPStatusError, httpx.RequestError) as exc:
                 results.append({"instanceId": it["instanceId"], "ok": False, "error": str(exc)})
         fresh = await throttle.run(lambda: get_profile(mtype, mid, access, settings, client))
     await _save_profile(pool, uid, fresh, mid)

@@ -112,6 +112,46 @@ def build_outfit(
     }
 
 
+def plan_apply(outfit: dict, target: str, locate) -> list[dict]:
+    """What equipping this outfit would do to each item — without doing it.
+
+    Mirrors `_move_one`'s rules exactly so the preview can never promise
+    something the run will refuse. `locate(instance_id)` returns the same
+    shape `_find_item_location` does: "vault", a character id,
+    "equipped:<character id>", or None when the item is not in the cached
+    profile.
+
+    Empty slots produce no entry at all — a slot you own nothing for is not a
+    failure the user can act on, and listing it as one is noise.
+    """
+    plan = []
+    slots = [(s, outfit["armor"].get(s)) for s in ARMOR_SLOTS]
+    slots += [(s, outfit["weapons"].get(s)) for s in AMMO_SLOTS]
+
+    for slot, item in slots:
+        if item is None:
+            continue
+        where = locate(item["instanceId"])
+        if where is None:
+            action, reason = "blocked", "Not in your cached inventory — refresh it."
+        elif where == f"equipped:{target}":
+            action, reason = "skip", "Already equipped."
+        elif isinstance(where, str) and where.startswith("equipped:"):
+            action, reason = "blocked", "Equipped on another character — unequip it there first."
+        else:
+            action, reason = "move", "Will be transferred and equipped."
+        plan.append({
+            "slot": slot,
+            "instanceId": item["instanceId"],
+            "itemHash": item["itemHash"],
+            "name": item["name"],
+            "isExotic": item.get("isExotic", False),
+            "action": action,
+            "reason": reason,
+        })
+    return plan
+
+
 def build_all_outfits(builds: dict, weapons: list[dict], armor: list[dict]) -> list[dict]:
     """One outfit per seeded "Class|Subclass" build, in sorted key order."""
     outfits = []

@@ -6,7 +6,9 @@ piece in two slots is exotic, producing an outfit the player cannot equip.
 
 Pure — no I/O.
 """
-from app.outfits import ARMOR_SLOTS, build_all_outfits, build_outfit, pick_with_one_exotic
+from app.outfits import (
+    AMMO_SLOTS, ARMOR_SLOTS, build_all_outfits, build_outfit, pick_with_one_exotic, plan_apply,
+)
 
 
 def armor(slot, cls="Warlock", exotic=False, **stats):
@@ -225,3 +227,83 @@ def test_outfit_carries_the_build_for_display():
     out = build_outfit("Warlock", "Solar", [], [], BUILD)
     assert out["build"] == BUILD
     assert out["statPriority"] == ["Grenade", "Health"]
+
+
+# ---------------------------------------------------------------------------
+# plan_apply — what equipping this outfit would do, without doing it
+# ---------------------------------------------------------------------------
+
+def _outfit_of(armor_by_slot=None, weapons_by_slot=None):
+    """An outfit shaped like build_outfit's return, with only the slots given."""
+    armor_full = {s: None for s in ARMOR_SLOTS}
+    armor_full.update(armor_by_slot or {})
+    weapons_full = {s: None for s in AMMO_SLOTS}
+    weapons_full.update(weapons_by_slot or {})
+    return {
+        "className": "Warlock", "subclass": "Solar", "statPriority": [], "build": {},
+        "armor": armor_full, "weapons": weapons_full,
+    }
+
+
+def test_plan_apply_skips_what_is_already_on_the_target():
+    piece = armor("Helmet", Grenade=10)
+    outfit = _outfit_of({"Helmet": piece})
+    plan = plan_apply(outfit, "char-a", lambda iid: "equipped:char-a")
+    assert [p["action"] for p in plan] == ["skip"]
+    assert plan[0]["instanceId"] == piece["instanceId"]
+
+
+def test_plan_apply_blocks_an_item_worn_by_another_character():
+    """Destiny will not let a worn item be stripped off a character remotely.
+
+    This is the common case with two characters of one class, and the whole
+    reason the confirm dialog exists.
+    """
+    outfit = _outfit_of({"Helmet": armor("Helmet", Grenade=10)})
+    plan = plan_apply(outfit, "char-a", lambda iid: "equipped:char-b")
+    assert plan[0]["action"] == "blocked"
+    assert "another character" in plan[0]["reason"]
+
+
+def test_plan_apply_moves_from_the_vault():
+    outfit = _outfit_of({"Helmet": armor("Helmet", Grenade=10)})
+    plan = plan_apply(outfit, "char-a", lambda iid: "vault")
+    assert plan[0]["action"] == "move"
+
+
+def test_plan_apply_moves_from_another_characters_inventory():
+    """Held (not worn) by another character is a normal transfer, not a block."""
+    outfit = _outfit_of({"Helmet": armor("Helmet", Grenade=10)})
+    plan = plan_apply(outfit, "char-a", lambda iid: "char-b")
+    assert plan[0]["action"] == "move"
+
+
+def test_plan_apply_blocks_an_item_missing_from_the_cached_profile():
+    outfit = _outfit_of({"Helmet": armor("Helmet", Grenade=10)})
+    plan = plan_apply(outfit, "char-a", lambda iid: None)
+    assert plan[0]["action"] == "blocked"
+    assert "inventory" in plan[0]["reason"]
+
+
+def test_plan_apply_ignores_empty_slots():
+    """A slot you own nothing for produces no plan entry at all — not a
+    blocked one, which would read as an error the user could act on."""
+    outfit = _outfit_of({"Helmet": armor("Helmet", Grenade=10)})
+    plan = plan_apply(outfit, "char-a", lambda iid: "vault")
+    assert len(plan) == 1
+
+
+def test_plan_apply_returns_armor_then_weapons_in_slot_order():
+    outfit = _outfit_of(
+        {s: armor(s, Grenade=10) for s in ARMOR_SLOTS},
+        {s: weapon(s, name=f"W{s}") for s in AMMO_SLOTS},
+    )
+    plan = plan_apply(outfit, "char-a", lambda iid: "vault")
+    assert [p["slot"] for p in plan] == list(ARMOR_SLOTS) + list(AMMO_SLOTS)
+
+
+def test_plan_apply_carries_the_name_for_display():
+    outfit = _outfit_of({"Helmet": armor("Helmet", Grenade=10)})
+    plan = plan_apply(outfit, "char-a", lambda iid: "vault")
+    assert plan[0]["name"] == "Helmet piece"
+    assert plan[0]["itemHash"] == 1
