@@ -420,8 +420,13 @@ export type Outfit = {
   weapons: Record<string, OutfitItem>;
 };
 
-export async function fetchOutfits(): Promise<Outfit[]> {
-  const res = await apiFetch("/api/outfits");
+/** The six Armor 3.0 stats, in the order the picker shows them. */
+export const ARMOR_STATS = ["Health", "Melee", "Grenade", "Super", "Class", "Weapons"] as const;
+export const MAX_FOCUS = 3;
+
+export async function fetchOutfits(focus: string[] = []): Promise<Outfit[]> {
+  const q = focus.length ? `?focus=${encodeURIComponent(focus.join(","))}` : "";
+  const res = await apiFetch(`/api/outfits${q}`);
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
     throw new Error(data.detail || `Failed to load outfits (${res.status})`);
@@ -444,11 +449,15 @@ export type OutfitPlanStep = {
 
 export async function applyOutfit(
   className: string, subclass: string, characterId: string, dryRun: boolean,
+  focus: string[] = [],
 ): Promise<{ plan: OutfitPlanStep[]; results: MoveResult[] }> {
+  // The focus must travel with the request: the server rebuilds the outfit,
+  // and rebuilding without it would plan a different set of items than the
+  // page is showing.
   const res = await apiFetch("/api/outfits/apply", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ className, subclass, characterId, dryRun }),
+    body: JSON.stringify({ className, subclass, characterId, dryRun, focus }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));

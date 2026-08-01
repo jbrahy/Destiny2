@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
-  applyOutfit, fetchCharacters, fetchOutfits, Outfit, OutfitItem, OutfitPlanStep,
+  applyOutfit, ARMOR_STATS, fetchCharacters, fetchOutfits, MAX_FOCUS,
+  Outfit, OutfitItem, OutfitPlanStep,
 } from "../api";
 import { Character, MoveResult } from "../types";
 import { Icon } from "./Icon";
@@ -120,7 +121,76 @@ function ResultsPanel({ plan, results }: { plan: OutfitPlanStep[]; results: Move
   );
 }
 
-function OutfitCard({ outfit, characters }: { outfit: Outfit; characters: Character[] }) {
+/** Pick the stats to chase. Nothing selected is not "no priority" — it means
+ *  each build keeps its own seeded priority, which is a different thing and has
+ *  to say so. */
+function FocusPicker({
+  focus, disabled, onChange,
+}: {
+  focus: string[];
+  disabled: boolean;
+  onChange: (next: string[]) => void;
+}) {
+  const [full, setFull] = useState(false);
+
+  function toggle(stat: string) {
+    if (focus.includes(stat)) { setFull(false); onChange(focus.filter((s) => s !== stat)); return; }
+    if (focus.length >= MAX_FOCUS) { setFull(true); return; }
+    setFull(false);
+    onChange([...focus, stat]);
+  }
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ fontSize: 12, color: "var(--muted)", marginRight: 4 }}>Focus:</span>
+        {ARMOR_STATS.map((stat) => {
+          const on = focus.includes(stat);
+          return (
+            <button
+              key={stat}
+              onClick={() => toggle(stat)}
+              disabled={disabled}
+              aria-pressed={on}
+              style={{
+                fontSize: 12, padding: "3px 10px", borderRadius: 999,
+                border: `1px solid ${on ? "var(--accent)" : "var(--border)"}`,
+                background: on ? "var(--accent)" : "transparent",
+                color: on ? "#0a0e16" : "var(--text)",
+                fontWeight: on ? 700 : 400,
+              }}
+            >
+              {stat}
+            </button>
+          );
+        })}
+        {focus.length > 0 && (
+          <button onClick={() => { setFull(false); onChange([]); }} disabled={disabled}
+                  style={{ fontSize: 12, marginLeft: 4 }}>
+            Clear
+          </button>
+        )}
+      </div>
+      <p style={{ fontSize: 11, color: full ? RED : "var(--muted)", margin: "6px 0 0" }}>
+        {full
+          ? `Up to ${MAX_FOCUS} stats — deselect one first.`
+          : focus.length === 0
+            ? "Nothing selected — each outfit uses its own build's stat priority."
+            : `Every outfit picks the armor with the most ${focus.join(" + ")}. ` +
+              "Armor is class-locked, not subclass-locked, so a class's subclasses " +
+              "will share the same armor and differ by weapons."}
+      </p>
+    </div>
+  );
+}
+
+function OutfitCard({
+  outfit, characters, focus,
+}: {
+  outfit: Outfit;
+  characters: Character[];
+  focus: string[];
+}) {
   const exoticArmor = Object.values(outfit.armor).find((i) => i?.isExotic);
   const exoticWeapon = Object.values(outfit.weapons).find((i) => i?.isExotic);
 
@@ -142,7 +212,7 @@ function OutfitCard({ outfit, characters }: { outfit: Outfit; characters: Charac
     // The wet run keeps the plan on screen so the confirm panel can show
     // "Equipping…" rather than vanishing mid-request.
     if (dryRun) { setPlan(null); setResults(null); }
-    applyOutfit(outfit.className, outfit.subclass, requestedFor, dryRun)
+    applyOutfit(outfit.className, outfit.subclass, requestedFor, dryRun, focus)
       .then((r) => {
         if (requestedFor !== characterId) return;   // picker moved — discard
         setPlan(r.plan);
@@ -225,19 +295,25 @@ function OutfitCard({ outfit, characters }: { outfit: Outfit; characters: Charac
 export function OutfitsPage() {
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [focus, setFocus] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  function load() {
+  // Refetch whenever the focus changes. The key on the grid below remounts
+  // every card, discarding any open confirm panel: a plan built for one focus
+  // must never be confirmed against another.
+  useEffect(() => {
+    let live = true;
     setLoading(true);
     setError("");
-    Promise.all([fetchOutfits(), fetchCharacters()])
-      .then(([o, c]) => { setOutfits(o); setCharacters(c); })
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
-  }
+    Promise.all([fetchOutfits(focus), fetchCharacters()])
+      .then(([o, c]) => { if (live) { setOutfits(o); setCharacters(c); } })
+      .catch((e) => { if (live) setError(String(e)); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [focus]);
 
-  useEffect(load, []);
+  function load() { setFocus((f) => [...f]); }
 
   return (
     <div>
@@ -248,6 +324,8 @@ export function OutfitsPage() {
         piece and one exotic weapon — the same limit Destiny enforces on your character.
         A slot you own nothing for is left empty rather than filled with a guess.
       </p>
+
+      <FocusPicker focus={focus} disabled={loading} onChange={setFocus} />
 
       <button onClick={load} disabled={loading} style={{ marginBottom: 16 }}>
         {loading ? "Generating…" : "Generate outfits"}
@@ -267,7 +345,12 @@ export function OutfitsPage() {
           display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
         }}>
           {outfits.map((o) => (
-            <OutfitCard key={`${o.className}|${o.subclass}`} outfit={o} characters={characters} />
+            <OutfitCard
+              key={`${o.className}|${o.subclass}|${focus.join(",")}`}
+              outfit={o}
+              characters={characters}
+              focus={focus}
+            />
           ))}
         </div>
       )}
