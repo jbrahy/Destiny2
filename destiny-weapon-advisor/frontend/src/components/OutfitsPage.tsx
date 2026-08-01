@@ -185,11 +185,12 @@ function FocusPicker({
 }
 
 function OutfitCard({
-  outfit, characters, focus,
+  outfit, characters, focus, onBusyChange,
 }: {
   outfit: Outfit;
   characters: Character[];
   focus: string[];
+  onBusyChange: (busy: boolean) => void;
 }) {
   const exoticArmor = Object.values(outfit.armor).find((i) => i?.isExotic);
   const exoticWeapon = Object.values(outfit.weapons).find((i) => i?.isExotic);
@@ -208,7 +209,7 @@ function OutfitCard({
   // the user would review "5 blocked" for Warlock A and land all 8 on Warlock B.
   function run(dryRun: boolean) {
     const requestedFor = characterId;
-    setBusy(true); setError("");
+    setBusy(true); onBusyChange(true); setError("");
     // The wet run keeps the plan on screen so the confirm panel can show
     // "Equipping…" rather than vanishing mid-request.
     if (dryRun) { setPlan(null); setResults(null); }
@@ -219,7 +220,7 @@ function OutfitCard({
         if (!dryRun) setResults(r.results);
       })
       .catch((e) => { if (requestedFor === characterId) setError(String(e)); })
-      .finally(() => setBusy(false));
+      .finally(() => { setBusy(false); onBusyChange(false); });
   }
 
   return (
@@ -293,21 +294,25 @@ function OutfitCard({
 }
 
 export function OutfitsPage() {
-  const [outfits, setOutfits] = useState<Outfit[]>([]);
+  // The outfits and the focus that produced them are ONE piece of state. Held
+  // separately, a focus change re-renders the old cards with the new focus
+  // already wired into their Equip buttons — so you would equip items you
+  // never saw. If the refetch then failed, that mismatch became permanent.
+  const [shown, setShown] = useState<{ outfits: Outfit[]; focus: string[] }>(
+    { outfits: [], focus: [] },
+  );
   const [characters, setCharacters] = useState<Character[]>([]);
   const [focus, setFocus] = useState<string[]>([]);
+  const [busyCards, setBusyCards] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // Refetch whenever the focus changes. The key on the grid below remounts
-  // every card, discarding any open confirm panel: a plan built for one focus
-  // must never be confirmed against another.
   useEffect(() => {
     let live = true;
     setLoading(true);
     setError("");
     Promise.all([fetchOutfits(focus), fetchCharacters()])
-      .then(([o, c]) => { if (live) { setOutfits(o); setCharacters(c); } })
+      .then(([o, c]) => { if (live) { setShown({ outfits: o, focus }); setCharacters(c); } })
       .catch((e) => { if (live) setError(String(e)); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
@@ -325,31 +330,37 @@ export function OutfitsPage() {
         A slot you own nothing for is left empty rather than filled with a guess.
       </p>
 
-      <FocusPicker focus={focus} disabled={loading} onChange={setFocus} />
+      {/* Locked while a card is mid-equip too: changing focus would unmount the
+          card, and the equip would still complete server-side with nobody left
+          to tell you what moved. */}
+      <FocusPicker focus={focus} disabled={loading || busyCards > 0} onChange={setFocus} />
 
-      <button onClick={load} disabled={loading} style={{ marginBottom: 16 }}>
+      <button onClick={load} disabled={loading || busyCards > 0} style={{ marginBottom: 16 }}>
         {loading ? "Generating…" : "Generate outfits"}
       </button>
 
-      {error && <p style={{ color: "#c62828" }}>{error}</p>}
+      {error && <p style={{ color: RED }}>{error}</p>}
       {loading && <p style={{ color: "var(--muted)" }}>Loading…</p>}
 
-      {!loading && !error && outfits.length === 0 && (
+      {!loading && !error && shown.outfits.length === 0 && (
         <p style={{ color: "var(--muted)" }}>
           No outfits yet — load your inventory on the Weapons tab first.
         </p>
       )}
 
-      {outfits.length > 0 && (
+      {/* Hidden while loading: cards must never be on screen showing one focus
+          while a different one is selected. */}
+      {!loading && !error && shown.outfits.length > 0 && (
         <div style={{
           display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
         }}>
-          {outfits.map((o) => (
+          {shown.outfits.map((o) => (
             <OutfitCard
-              key={`${o.className}|${o.subclass}|${focus.join(",")}`}
+              key={`${o.className}|${o.subclass}|${shown.focus.join(",")}`}
               outfit={o}
               characters={characters}
-              focus={focus}
+              focus={shown.focus}
+              onBusyChange={(b) => setBusyCards((n) => n + (b ? 1 : -1))}
             />
           ))}
         </div>
